@@ -20,7 +20,7 @@ Detection logic is implemented as:
 - an Arelle-based loader/validator (Arelle used as a library or via CLI), plus
 - CMD+RVL custom detectors (plugin or wrapper) that emit `xew_findings.json`.
 
-SEC/EFM/DQCRT rule outputs may be attached as additional evidence, but XEW patterns are not defined as "whatever Arelle warns about."
+SEC/EFM rule outputs and third-party validation results (e.g., XBRL US Data Quality Committee rules) may be attached as additional evidence, but XEW patterns are not defined as "whatever Arelle warns about."
 
 ## Evidence Pack Layout (directory)
 An Evidence Pack is a directory with a stable internal layout.

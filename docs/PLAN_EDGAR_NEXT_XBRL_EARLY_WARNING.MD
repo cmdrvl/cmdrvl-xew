@@ -36,21 +36,20 @@ An EDGAR submission rejection attributable to XBRL/inline XBRL validation rules 
 A reject/failure that can be resolved by issuer/vendor changes to the filing artifacts (tagging, taxonomy packaging, contexts/units, relationships), without requiring SEC-side system changes (e.g., EDGAR outages) or special exemptions.
 
 ### "Prior comparable filing"
-The issuer's most recent filing of the same form type (10-Q compares to the prior 10-Q; 10-K compares to the prior 10-K).
-If an amendment/restatement exists for that prior comparable filing, use the latest filed version (e.g., 10-Q/A or 10-K/A) as the comparator and record the choice in the Evidence Pack.
-If no prior comparable filing exists (e.g., new registrant), comparator-based checks are skipped and alerts must be supported by within-filing evidence alone.
+The issuer's most recent filing of the same base form type (10-Q compares to the prior 10-Q; 10-K compares to the prior 10-K). Amended filings (10-Q/A, 10-K/A) are treated as the same base form type as their original.
+If an amendment/restatement exists for the prior comparable period, use the latest filed version (the /A) as the comparator and record the choice in the Evidence Pack.
+If no prior comparable filing exists (e.g., new registrant, or first filing of a form type), comparator-based checks are skipped and alerts must be supported by within-filing evidence alone.
 
 ### "Next filing cycle" (in this plan)
-The issuer's next submission of the same form type (next 10-Q or next 10-K). CMD+RVL flags risk from the last filed artifacts as soon as they are analyzed; it does not depend on knowing the issuer's internal draft timeline.
+The issuer's next submission of the same form type (next 10-Q or next 10-K). CMD+RVL analyzes each filed artifact as soon as it is available; the "next cycle" language describes when the flagged fragility could materialize as a problem, not when analysis occurs. Note: fragility patterns detected in a 10-Q may also be relevant to the upcoming 10-K if similar structures are reused, but v1 comparisons are same-form-type only.
 
 ### "EDGAR Next" (in this plan)
 Shorthand for the EDGAR modernization period in which operational behavior may change. This plan does not assume EDGAR Next implies stricter XBRL validation; CMD+RVL treats validation/enforcement shifts as external facts to measure, not assumptions to argue about.
 
 ### "Elevated risk" (in this plan)
 Means: at least one fragility pattern is observed in the latest filed artifacts and there is a concrete, testable mechanism + break trigger described. CMD+RVL does not provide numeric probabilities in v1.
-The term "elevated" is a category label in this plan, not a calibrated comparison to any baseline reject rate.
-It is a structural risk flag (mechanism-first), not a promise that an EDGAR rejection will occur.
-In v1, this is asserted only when a target v1 shipping pattern passes the Gate and is detected; absence of an alert is not evidence of absence.
+The term "elevated" is a structural risk flag (mechanism-first), not a calibrated probability or a promise that an EDGAR rejection will occur. It signals "a known fragility mechanism is present" rather than "rejection is likely."
+In v1, this is asserted only when a target v1 shipping pattern passes the Gate and is detected; absence of an alert is not evidence of absence (the pattern catalog is intentionally narrow).
 
 ### "Adaptation marker" (in this plan)
 A historical change-point in filing structure that is consistent with a filer/vendor changing XBRL structure (e.g., to address new rules/guidance, taxonomy updates, validator behavior, or vendor/tooling migration). Markers are context, not proof:
@@ -131,7 +130,7 @@ Do not say this:
 
 ## Hard Scope Limits (So You Actually Ship)
 ### Filing coverage (v1)
-- Forms: 10-Q and 10-K only
+- Forms: 10-Q and 10-K only (the CLI can process other forms like 8-K, but v1 alerts are scoped to periodic filings)
 - XBRL format: inline XBRL as filed on EDGAR
 
 ### Issuer set (v1)
@@ -140,7 +139,7 @@ Do not say this:
 
 ### Alert policy (v1)
 - One pattern per alert (the Evidence Pack may include multiple instances)
-- Default: at most 1 externally-sent alert per issuer per filing (the highest-confidence alert-eligible v1 pattern).
+- Default: at most 1 externally-sent alert per issuer per filing (selected by explicit priority order defined in the pattern catalog, not by a confidence score).
 - If multiple patterns trip in one filing, record the rest internally (and optionally include them as an appendix in the Evidence Pack) but do not send separate alerts by default.
 - Optional mode: if the customer explicitly requests "all patterns", send one alert per alert-eligible v1 pattern (still human reviewed).
 - Human review gate before sending anything externally (until precision is proven)
@@ -157,7 +156,7 @@ Do not say this:
 ---
 
 ## Historical Adaptation Markers (v1)
-These markers are not alerts by themselves. They are context signals derived from a filing history window (e.g., last 8 10-Qs and last 3 10-Ks) to detect a likely "migration/update event."
+These markers are not alerts by themselves. They are context signals derived from a rolling filing history window (e.g., approximately 2-3 years of prior filings of the same form type) to detect a likely "migration/update event."
 
 Marker ID format: `XEW-M###` (XBRL Early Warning Marker).
 
@@ -203,15 +202,15 @@ Other patterns remain documented as candidates, but are treated as roadmap until
 - `XEW-P006` Ambiguous Dimensional Member Reuse (semantic; not safe to auto-alert)
 - `XEW-P007` Duplicate-by-Substance Contexts (potentially useful; log internally in v1 but do not auto-alert due to high noise risk and unclear reject mechanism)
 
-## XEW Pattern Catalog (v0: canon + candidates)
+## XEW Pattern Catalog
 A construct is fragile if it meets all three:
 - The SEC, EDGAR guidance, or the XBRL spec classifies it as incorrect, discouraged, or ambiguity-prone, and
 - it can be accepted as filed in practice due to tolerance or stable context, and
 - a reasonable disclosure change could surface it as a rejection/failure.
 
-Canon rule (v0): a pattern is "canon" only once its rule basis is explicitly pinned and included in the Evidence Pack. Until then, it is a candidate and must not be auto-alerted.
+Canon rule: a pattern is "canon" only once its rule basis is explicitly pinned and included in the Evidence Pack. Until then, it is a candidate and must not be auto-alerted.
 
-Provenance note (v0): this catalog starts as a hypothesis derived from published SEC/EDGAR guidance + XBRL spec constraints + common validator check classes. "Real" in CMD+RVL terms means: pinned rule basis + reproducible evidence + low-noise behavior in the pilot.
+Provenance note: this catalog starts as a hypothesis derived from published SEC/EDGAR guidance + XBRL spec constraints + common validator check classes. "Real" in CMD+RVL terms means: pinned rule basis + reproducible evidence + low-noise behavior in the pilot.
 
 This is a catalog with a canon rule, not a backlog. Additions require the same burden of proof; removals require explicit justification.
 
@@ -229,7 +228,7 @@ Note (v1): "v1 status: ship" means "in the target v1 shipping set; it ships only
 ### XEW-P001: Duplicate Facts With Equivalent Context/Unit
 - v1 status: ship (report duplicates and whether values conflict; rule basis required).
 - Signal: two or more facts with the same QName + equivalent context (same entity identifier (scheme + value) + period + dimension-member set), and the same unit when applicable.
-- Why fragile: duplicates create ambiguity; they can be tolerated in stable filings but can become reject-risk under enforcement tightening or disclosure evolution that makes the ambiguity unavoidable.
+- Why fragile: XBRL 2.1 spec section 4.6.1 states facts with identical concept/context/unit should be considered duplicates. Duplicates create ambiguity for consumers; they may be tolerated in stable filings but can become reject-risk under enforcement tightening (e.g., stricter EFM validation) or disclosure evolution that surfaces the ambiguity.
 - Break trigger examples: roll-forward period edits; dimensional changes; validator/enforcement tightening around duplicates.
 - Evidence must include: the duplicate fact set(s) (QName, unitRef when applicable, values), the context IDs involved and their equivalent context signature (entity identifier (scheme + value) + period + dimension-member set), whether values conflict, and a reproducible query or extraction that finds them.
 
@@ -257,7 +256,7 @@ Note (v1): "v1 status: ship" means "in the target v1 shipping set; it ships only
 ### XEW-P005: Inconsistent Taxonomy References
 - v1 status: ship (alert on internal inconsistency/mismatch only; rule basis required).
   - Note: "deprecated/old taxonomy" claims require an explicit, pinned rule basis as-of `retrieved_at` and are not default v1 alerts.
-- Signal: taxonomy references are internally inconsistent (mixed versions), or show namespace/schemaRef mismatch across artifacts.
+- Signal: taxonomy references are internally inconsistent within the same filing (e.g., extension schema imports us-gaap/2024 but facts use us-gaap/2025 namespace), or schemaRef hrefs don't match the namespaces actually used in facts.
 - Why fragile: taxonomy mismatches can be tolerated until a change forces a stricter validation path (new extensions, new disclosures, or updated validation rules).
 - Break trigger examples: taxonomy refresh; validator/enforcement tightening; extension reuse/expansion.
 - Evidence must include: the schemaRef href(s)/namespace(s) observed; the filing artifacts where they appear; and the rule basis referenced in the Evidence Pack.
@@ -276,7 +275,7 @@ Note (v1): "v1 status: ship" means "in the target v1 shipping set; it ships only
 - Break trigger examples: adding new facts; roll-forward edits; dimensional expansion; validator/enforcement tightening.
 - Evidence must include: the context IDs involved; their entity identifier (scheme + value); their periods; their dimension-member sets; and a reproducible extraction demonstrating identical signatures.
 
-### Break Trigger Canon (v0) (Annotations, Not Alerts)
+### Break Trigger Catalog (Annotations, Not Alerts)
 Break triggers are recorded on alerts as explicit "what could surface this" annotations. A break trigger is never an alert by itself.
 This is where we encode "facts dependent on period coincidence" without turning it into a standalone alert category.
 
@@ -390,7 +389,7 @@ These are implementable, but must be pinned to avoid silent drift and false clai
 
 ### Required fields (v1)
 - Issuer: legal name, CIK, ticker (if available)
-- Filing: form, filed date, period end date (if applicable), accession number, filing URL
+- Filing: form, filed date, period end date, accession number, filing URL
 - Comparator filing (if delta-based): accession number + filing URL
 - Adaptation markers (if any): `XEW-M###` + the filing boundary where detected
 - Pattern: `XEW-P###`, short name
@@ -404,15 +403,15 @@ These are implementable, but must be pinned to avoid silent drift and false clai
 
 ### Example alert (fictional)
 Subject:
-`[CMD+RVL XEW] ExampleCo, Inc. (CIK 0000123456) 10-Q filed 2026-01-20 - XEW-P002: Extension Anchoring Defects`
+`[CMD+RVL XEW] ExampleCo, Inc. (CIK 0000123456) 10-Q filed 2025-11-10 - XEW-P002: Extension Anchoring Defects`
 
 Body:
 - Issuer: ExampleCo, Inc. (CIK 0000123456), Ticker: EXMPL
-- Filing: 10-Q filed 2026-01-20, period end 2025-12-31, accession 0000123456-26-000005
+- Filing: 10-Q filed 2025-11-10, period end 2025-09-30, accession 0000123456-25-000042
 - Filing URL: <EDGAR filing URL>
-- Comparator filing: 10-Q filed 2025-10-20, accession 0000123456-25-000004
+- Comparator filing: 10-Q filed 2025-08-10, accession 0000123456-25-000031 (Q2 2025)
 - Comparator URL: <EDGAR filing URL>
-- Adaptation markers: XEW-M002 detected between 0000123456-25-000004 -> 0000123456-26-000005
+- Adaptation markers: XEW-M002 detected between 0000123456-25-000031 -> 0000123456-25-000042
 - Pattern: XEW-P002 - Extension Anchoring Defects
 - Observed evidence:
   - New extension QNames appear in tagged facts in the revenue footnote vs the comparator 10-Q.
@@ -422,7 +421,7 @@ Body:
   - If validator/enforcement strictness tightens around anchoring, this can become a late-cycle reject risk.
   - This can be a signature of a tagging model change; partial migrations are plausible.
 - Break trigger: XEW-BT004 - Validator/Enforcement Tightening.
-- Evidence Pack: XEW-EP-0007 (retrieved_at 2026-01-20T14:32:10Z), attached
+- Evidence Pack: XEW-EP-0007 (retrieved_at 2025-11-10T14:32:10Z), attached
 - Human review: YES
 - Reply-to: <your contact>
 
@@ -460,7 +459,7 @@ Patterns not in the v1 shipping set are logged as internal observations/roadmap 
 ## When This Outcome Matters Most
 The outcome becomes critical during:
 
-- Q4 / annual roll-forward
+- Year-end / 10-K filing period (when annual roll-forward happens)
 - Segment or reporting structure changes
 - Restatements
 - Acquisitions or divestitures
@@ -510,7 +509,7 @@ That is outcome-grade.
 - No alert spam
 - No opinions without evidence
 - No alert unless it maps to a v1 shipping `XEW-P###` pattern (passed the Gate) and the Evidence Pack includes the rule basis
-- Rule basis must be anchored to SEC/EDGAR guidance (e.g., EFM) or the XBRL spec; third-party rule sets/validator outputs (e.g., DQCRT, Arelle messages) may be included as supporting evidence but are not sufficient alone
+- Rule basis must be anchored to SEC/EDGAR guidance (e.g., EFM) or the XBRL spec; third-party rule sets/validator outputs (e.g., XBRL US Data Quality Committee rules, Arelle messages) may be included as supporting evidence but are not sufficient alone
 - Separate observed evidence from mechanism; the mechanism must be testable and tied to the Evidence Pack
 
 Every alert must be:
@@ -574,11 +573,11 @@ Deliverables by Day 7:
 
 Deliverables by Day 21:
 - Monitoring loop runs daily without manual artifact hunting
-- Evidence Packs generated in < 15 minutes after detection (target)
+- Evidence Packs generated within 15 minutes of new filing availability on EDGAR (target; excludes artifact download time)
 - Pilot running with at least 5 issuers (target)
 
 ### Days 22-30: Precision, Packaging, and Trust
-- Measure precision proxies (human review disagreement rate, recipient "not an issue" feedback, "actioned" rate, time-to-triage); treat true recall as unknown without ground truth
+- Measure precision via indirect proxies (human review disagreement rate, recipient "not an issue" feedback, "actioned" rate, time-to-triage). Note: true precision requires knowing whether flagged patterns would have caused actual failures, which is unknowable without ground truth; treat recall as similarly unknown.
 - Tighten pattern definitions based on pilot outcomes
 - Standardize alert template + Evidence Pack layout
 - Define v2 expansion options (more forms, more issuers, severity tiers) without changing the v1 promise
