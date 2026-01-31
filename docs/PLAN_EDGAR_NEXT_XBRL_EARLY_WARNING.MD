@@ -17,7 +17,7 @@ They **receive signals** when a concrete, testable fragility mechanism is observ
 ### "Enforcement-fragile"
 XBRL that:
 - is accepted as filed on EDGAR (i.e., was accepted at submission time), but
-- contains an observable pattern with a specific, testable break mechanism under (a) disclosure structure change, (b) taxonomy change, or (c) changes in EDGAR validation/enforcement behavior.
+- contains an observable pattern with a specific, testable break mechanism that could be triggered by any of: (a) disclosure structure change, (b) taxonomy change, or (c) changes in EDGAR validation/enforcement behavior.
 
 ### "Alert"
 A single alert-eligible pattern observation, tied to a specific filing artifact (or a specific delta vs the prior comparable filing), that can be reviewed in minutes.
@@ -61,7 +61,7 @@ Namespace-qualified name used to identify an XBRL concept/dimension/member (e.g.
 
 ## Why This Outcome Exists
 - EDGAR XBRL validation/enforcement behavior can change unevenly and incrementally.
-- Many XBRL patterns still pass until something *changes*.
+- Structurally questionable XBRL patterns may pass validation for years, then fail suddenly when enforcement tightens or disclosure structure changes.
 - Failures surface late (submission time), when fixes are expensive.
 - Filing vendors validate drafts; monitoring last cycle's filed artifacts for next-cycle fragility is not always performed.
 - Accountability for "what could break next quarter" is often diffuse.
@@ -148,7 +148,7 @@ Do not say this:
 
 ## Pilot Hypotheses (Must Prove)
 - Filed inline XBRL contains detectable enforcement-fragile patterns (per the XEW pattern catalog) that can be reproduced from public EDGAR artifacts, without issuer cooperation.
-- Adaptation markers derived from filing history improve triage clarity (they help distinguish "stable filers" from "recently migrated filers") without being treated as causal proof.
+- Adaptation markers derived from filing history improve triage clarity compared to alerts without historical context (markers help distinguish "stable filers" from "recently migrated filers") without being treated as causal proof.
 - Evidence Packs built from public artifacts (EDGAR filing artifacts plus pinned taxonomy/rule sources) are sufficient for a third party (issuer team or vendor) to reproduce the issue quickly.
 - For each target v1 shipping pattern, a defensible rule basis can be pinned (SEC/EDGAR guidance or XBRL spec) and included in the Evidence Pack (or else the pattern is demoted and does not ship).
 - Alert volume can stay low without sacrificing actionability (quality beats coverage in v1).
@@ -186,14 +186,17 @@ Marker ID format: `XEW-M###` (XBRL Early Warning Marker).
 - Evidence must include: duplicate signature counts (before/after) + example signatures + accession numbers.
 
 Marker caution (important): these are not proof the filer was reacting to "stricter guidelines." Business events can also cause structural change. Treat markers as triage context only.
-Rule (v1): any "material" / "sharp change" thresholds used to detect markers must be explicit (versioned) and recorded in the Evidence Pack/toolchain config so results are reproducible.
+
+Threshold rule (v1): the descriptions above use qualitative terms ("materially", "high churn", "sharply") as placeholders. At implementation time, these must be replaced with explicit numeric thresholds (e.g., ">30% change in extension concept count") and recorded in the Evidence Pack/toolchain config so results are reproducible. Markers without pinned thresholds must not ship.
 
 ## V1 Shipping Pattern Set (Scope Lock)
-In v1, CMD+RVL generates alert candidates only for the following target shipping patterns (subject to the Gate):
-- `XEW-P001` Duplicate Facts With Equivalent Context/Unit (rule basis required)
-- `XEW-P002` Extension Anchoring Defects (objective checks only; rule basis required; no "semantic unrelatedness" claims)
-- `XEW-P004` Invalid or Discouraged Data-Type / Unit / Numeric Attributes (rule-basis required)
-- `XEW-P005` Inconsistent Taxonomy References (rule-basis required; focus on internal inconsistency in v1)
+In v1, CMD+RVL generates alert candidates only for the following target shipping patterns (subject to the Gate), listed in alert priority order (highest first):
+1. `XEW-P001` Duplicate Facts With Equivalent Context/Unit (rule basis required) — highest priority because duplicates are unambiguous structural errors
+2. `XEW-P004` Invalid or Discouraged Data-Type / Unit / Numeric Attributes (rule-basis required) — second priority for objective type/unit violations
+3. `XEW-P005` Inconsistent Taxonomy References (rule-basis required; focus on internal inconsistency in v1) — third priority for namespace/schemaRef mismatches
+4. `XEW-P002` Extension Anchoring Defects (objective checks only; rule basis required; no "semantic unrelatedness" claims) — fourth priority; often requires more context to assess severity
+
+When multiple patterns are detected in one filing and only one alert is sent (the default), select the highest-priority pattern.
 
 Gate (v1): if a defensible rule basis cannot be pinned for a listed pattern, it is demoted to a candidate and does not ship.
 
@@ -228,7 +231,7 @@ Note (v1): "v1 status: ship" means "in the target v1 shipping set; it ships only
 ### XEW-P001: Duplicate Facts With Equivalent Context/Unit
 - v1 status: ship (report duplicates and whether values conflict; rule basis required).
 - Signal: two or more facts with the same QName + equivalent context (same entity identifier (scheme + value) + period + dimension-member set), and the same unit when applicable.
-- Why fragile: XBRL 2.1 spec section 4.6.1 states facts with identical concept/context/unit should be considered duplicates. Duplicates create ambiguity for consumers; they may be tolerated in stable filings but can become reject-risk under enforcement tightening (e.g., stricter EFM validation) or disclosure evolution that surfaces the ambiguity.
+- Why fragile: Per XBRL semantics, two facts with identical concept/context/unit represent the same assertion and are considered duplicates. Duplicates create ambiguity for consumers (which value is authoritative?); they may be tolerated in stable filings but can become reject-risk under enforcement tightening (e.g., stricter EFM validation) or disclosure evolution that surfaces the ambiguity.
 - Break trigger examples: roll-forward period edits; dimensional changes; validator/enforcement tightening around duplicates.
 - Evidence must include: the duplicate fact set(s) (QName, unitRef when applicable, values), the context IDs involved and their equivalent context signature (entity identifier (scheme + value) + period + dimension-member set), whether values conflict, and a reproducible query or extraction that finds them.
 
@@ -241,7 +244,7 @@ Note (v1): "v1 status: ship" means "in the target v1 shipping set; it ships only
 
 ### XEW-P003: Inconsistent Dimensional Application
 - v1 status: roadmap (high false-positive risk without strict comparability rules; do not auto-alert).
-- Signal: the same concept is reported both with dimensions and without dimensions (or with materially different dimension-member sets) in comparable contexts.
+- Signal: the same concept is reported both with dimensions and without dimensions (or with materially different dimension-member sets) in contexts that should be comparable (same period type and similar business meaning).
 - Why fragile: dimensional inconsistency is a known error class and can be "quiet" until the disclosure structure shifts.
 - Break trigger examples: segment changes; adding/removing members; roll-forward edits; validator/enforcement tightening around dimensional validity.
 - Evidence must include: the concept QName; the dimension-member set(s) observed; and representative fact/context examples showing the inconsistency.
@@ -256,7 +259,7 @@ Note (v1): "v1 status: ship" means "in the target v1 shipping set; it ships only
 ### XEW-P005: Inconsistent Taxonomy References
 - v1 status: ship (alert on internal inconsistency/mismatch only; rule basis required).
   - Note: "deprecated/old taxonomy" claims require an explicit, pinned rule basis as-of `retrieved_at` and are not default v1 alerts.
-- Signal: taxonomy references are internally inconsistent within the same filing (e.g., extension schema imports us-gaap/2024 but facts use us-gaap/2025 namespace), or schemaRef hrefs don't match the namespaces actually used in facts.
+- Signal: taxonomy references are internally inconsistent within the same filing (e.g., extension schema imports `http://fasb.org/us-gaap/2024` but facts use `http://fasb.org/us-gaap/2025` namespace), or schemaRef hrefs don't match the namespaces actually used in facts.
 - Why fragile: taxonomy mismatches can be tolerated until a change forces a stricter validation path (new extensions, new disclosures, or updated validation rules).
 - Break trigger examples: taxonomy refresh; validator/enforcement tightening; extension reuse/expansion.
 - Evidence must include: the schemaRef href(s)/namespace(s) observed; the filing artifacts where they appear; and the rule basis referenced in the Evidence Pack.
@@ -351,7 +354,8 @@ Outputs (v1):
 - An Evidence Pack directory containing `pack_manifest.json`, `xew_findings.json`, `toolchain/toolchain.json`, and `artifacts/`.
 
 Commands (v1):
-- `cmdrvl-xew pack`: generate an Evidence Pack from either EDGAR inputs or local artifacts.
+- `cmdrvl-xew flatten`: normalize EDGAR directory structure (with typed subdirectories like EX-101.SCH/) into a flat layout that Arelle can load.
+- `cmdrvl-xew pack`: generate an Evidence Pack from flat artifacts (output of `flatten` or pre-staged flat directory).
 - `cmdrvl-xew verify-pack`: verify `pack_manifest.json` integrity hashes and validate `xew_findings.json` against the schema.
 
 ### Open Source Strategy (v1)
@@ -396,7 +400,7 @@ These are implementable, but must be pinned to avoid silent drift and false clai
 - Observed evidence (facts only; 2 bullets max): what is directly observable in the filing artifacts
 - Summary (1 sentence): what changed (if delta-based) / what is fragile
 - Why it matters (2 bullets max): what failure mode this points to
-- Break trigger (explicit): `XEW-BT###` + the most plausible future change that could turn this into a rejection/failure
+- Break trigger (explicit): `XEW-BT###` + the break trigger most directly connected to the observed pattern (selected from the Break Trigger Catalog; when multiple apply, pick the one most specific to the pattern)
 - Evidence Pack: attachment or link + pack ID + retrieved_at timestamp
 - Human review: `YES` (pilot default) or `NO` (only after precision is proven)
 - Reply-to: where the customer should send questions (email/Slack handle)
@@ -551,7 +555,7 @@ New build (v1):
 - Lock the target v1 pattern set (4 patterns), subject to the Gate (rule basis pinned), and freeze the detector output + Evidence Pack contract
 - Define v1 issue code catalogs + canonicalization rules needed for deterministic IDs and low-noise detection
 - Build ingestion + artifact retrieval for 10-Q/10-K inline XBRL artifacts (pilot issuer list)
-- Produce 3-5 internal alerts end-to-end with Evidence Packs (human reviewed)
+- Produce 3-5 internal alerts end-to-end with Evidence Packs (human reviewed); if insufficient patterns are detected in pilot issuers, expand the issuer set or backtest against historical filings known to have issues
 - Define "no-alert" baselines (what is *not* worth alerting on)
 
 Deliverables by Day 7:
