@@ -1,16 +1,39 @@
 {
   "schema_id": "cmdrvl.xew_issue_codes",
   "schema_version": "1.0",
-  "generated_at": "2026-01-30T00:00:00Z",
+  "generated_at": "2026-01-31T15:38:00Z",
   "patterns": {
+    "XEW-P001": {
+      "issue_codes": [
+        "duplicate_facts_structural_ambiguity",
+        "duplicate_facts_enforcement_risk",
+        "duplicate_facts_value_conflict"
+      ]
+    },
     "XEW-P002": {
-      "issue_codes": []
+      "issue_codes": [
+        "anchor_target_abstract",
+        "anchor_to_extension",
+        "period_type_mismatch",
+        "type_mismatch",
+        "unanchored"
+      ]
     },
     "XEW-P004": {
-      "issue_codes": []
+      "issue_codes": [
+        "decimals_precision_conflict",
+        "invalid_decimals",
+        "invalid_precision",
+        "missing_unit",
+        "non_numeric_with_unit",
+        "unit_incompatible"
+      ]
     },
     "XEW-P005": {
-      "issue_codes": []
+      "issue_codes": [
+        "mixed_taxonomy_versions",
+        "namespace_schema_ref_mismatch"
+      ]
     }
   }
 }
