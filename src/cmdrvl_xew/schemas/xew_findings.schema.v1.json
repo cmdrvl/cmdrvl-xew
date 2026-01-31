@@ -1,0 +1,473 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CMD+RVL XEW Findings (v1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "generated_at",
+    "toolchain",
+    "input",
+    "artifacts",
+    "findings"
+  ],
+  "properties": {
+    "schema_id": {
+      "type": "string",
+      "const": "cmdrvl.xew_findings"
+    },
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "toolchain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cmdrvl_xew_version", "arelle_version"],
+      "properties": {
+        "cmdrvl_xew_version": { "type": "string", "minLength": 1 },
+        "arelle_version": { "type": "string", "minLength": 1 },
+        "arelle_sec_plugin_version": { "type": "string" },
+        "dqcrt_version": { "type": "string" },
+        "config": {
+          "type": "object",
+          "description": "Settings that can affect reproducibility (offline/online resolution, cache policy, etc.).",
+          "additionalProperties": true
+        }
+      }
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cik", "accession", "form", "filed_date", "primary_document_url", "primary_artifact_path"],
+      "properties": {
+        "issuer_name": { "type": "string" },
+        "cik": {
+          "type": "string",
+          "pattern": "^\\d{10}$",
+          "description": "Zero-padded 10-digit CIK string."
+        },
+        "accession": {
+          "type": "string",
+          "pattern": "^\\d{10}-\\d{2}-\\d{6}$"
+        },
+        "form": { "type": "string", "minLength": 1 },
+        "filed_date": { "type": "string", "format": "date" },
+        "period_end": { "type": "string", "format": "date" },
+        "primary_document_url": { "type": "string", "format": "uri" },
+        "primary_artifact_path": { "type": "string", "minLength": 1 },
+        "comparator": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["accession", "primary_document_url", "primary_artifact_path"],
+          "properties": {
+            "accession": {
+              "type": "string",
+              "pattern": "^\\d{10}-\\d{2}-\\d{6}$"
+            },
+            "primary_document_url": { "type": "string", "format": "uri" },
+            "primary_artifact_path": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/artifact" }
+    },
+    "markers": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/marker" }
+    },
+    "findings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/finding" }
+    },
+    "repro": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "steps": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "command": { "type": "string" }
+      }
+    },
+    "ext": {
+      "type": "object",
+      "description": "Forward-compatible extension bag.",
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "qname": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["clark"],
+      "properties": {
+        "clark": {
+          "type": "string",
+          "pattern": "^\\{[^}]+\\}.+$",
+          "description": "Clark notation: {namespaceURI}localName"
+        },
+        "namespace": { "type": "string" },
+        "local_name": { "type": "string" },
+        "prefixed": {
+          "type": "string",
+          "description": "Optional display form (not used for canonical IDs)."
+        }
+      }
+    },
+    "entity_id": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scheme", "identifier"],
+      "properties": {
+        "scheme": { "type": "string", "minLength": 1 },
+        "identifier": { "type": "string", "minLength": 1 }
+      }
+    },
+    "period": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "type": "string", "enum": ["instant", "duration"] },
+        "instant": { "type": "string", "format": "date" },
+        "start": { "type": "string", "format": "date" },
+        "end": { "type": "string", "format": "date" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "instant" } } },
+          "then": { "required": ["instant"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "duration" } } },
+          "then": { "required": ["start", "end"] }
+        }
+      ]
+    },
+    "dimension_member": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dimension"],
+      "properties": {
+        "dimension": { "$ref": "#/$defs/qname" },
+        "member": { "$ref": "#/$defs/qname" },
+        "typed_value": { "type": "string" }
+      },
+      "oneOf": [
+        { "required": ["member"] },
+        { "required": ["typed_value"] }
+      ]
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "role", "sha256", "bytes"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "role": {
+          "type": "string",
+          "enum": ["primary_ixbrl", "edgar_artifact", "taxonomy_input", "generated", "other"]
+        },
+        "source_url": { "type": "string", "format": "uri" },
+        "retrieved_at": { "type": "string", "format": "date-time" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "content_type": { "type": "string" }
+      }
+    },
+    "marker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["marker_id", "boundary", "evidence"],
+      "properties": {
+        "marker_id": { "type": "string", "pattern": "^XEW-M\\d{3}$" },
+        "boundary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["from_accession", "to_accession"],
+          "properties": {
+            "from_accession": { "type": "string", "pattern": "^\\d{10}-\\d{2}-\\d{6}$" },
+            "to_accession": { "type": "string", "pattern": "^\\d{10}-\\d{2}-\\d{6}$" }
+          }
+        },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "break_trigger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "summary"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^XEW-BT\\d{3}$" },
+        "summary": { "type": "string", "minLength": 1 }
+      }
+    },
+    "rule_basis_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "citation"],
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": ["SEC_EFM", "XBRL_SPEC", "DQCRT", "ARELLE_VALIDATION", "OTHER"]
+        },
+        "citation": { "type": "string", "minLength": 1 },
+        "url": { "type": "string", "format": "uri" },
+        "retrieved_at": { "type": "string", "format": "date-time" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "notes": { "type": "string" }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "finding_id",
+        "pattern_id",
+        "pattern_name",
+        "alert_eligible",
+        "status",
+        "human_review_required",
+        "break_triggers",
+        "observed",
+        "mechanism",
+        "why_not_fatal_yet"
+      ],
+      "properties": {
+        "finding_id": { "type": "string", "minLength": 1 },
+        "pattern_id": { "type": "string", "pattern": "^XEW-P\\d{3}$" },
+        "pattern_name": { "type": "string", "minLength": 1 },
+        "alert_eligible": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["detected", "suppressed"] },
+        "suppression_reason": { "type": "string" },
+        "human_review_required": { "type": "boolean" },
+        "break_triggers": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/break_trigger" }
+        },
+        "rule_basis": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/rule_basis_ref" }
+        },
+        "observed": { "$ref": "#/$defs/observed_block" },
+        "mechanism": { "type": "string", "minLength": 1 },
+        "why_not_fatal_yet": { "type": "string", "minLength": 1 },
+        "repro": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "steps": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "command": { "type": "string" }
+          }
+        }
+      }
+    },
+    "observed_block": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["instance_count_total", "instance_count_included", "truncated", "instances"],
+      "properties": {
+        "instance_count_total": { "type": "integer", "minimum": 0 },
+        "instance_count_included": { "type": "integer", "minimum": 0 },
+        "truncated": { "type": "boolean" },
+        "instances": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/instance" }
+        }
+      }
+    },
+    "instance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["instance_id", "kind", "primary", "data"],
+      "properties": {
+        "instance_id": { "$ref": "#/$defs/sha256" },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "duplicate_fact_set",
+            "extension_anchoring_issue",
+            "fact_numeric_typing_issue",
+            "taxonomy_reference_issue",
+            "duplicate_context_signature"
+          ]
+        },
+        "primary": { "type": "boolean" },
+        "data": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "duplicate_fact_set" } } },
+          "then": { "properties": { "data": { "$ref": "#/$defs/p001_duplicate_fact_set" } } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "extension_anchoring_issue" } } },
+          "then": { "properties": { "data": { "$ref": "#/$defs/p002_extension_anchoring_issue" } } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "fact_numeric_typing_issue" } } },
+          "then": { "properties": { "data": { "$ref": "#/$defs/p004_fact_numeric_typing_issue" } } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "taxonomy_reference_issue" } } },
+          "then": { "properties": { "data": { "$ref": "#/$defs/p005_taxonomy_reference_issue" } } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "duplicate_context_signature" } } },
+          "then": { "properties": { "data": { "$ref": "#/$defs/p007_duplicate_context_signature" } } }
+        }
+      ]
+    },
+    "fact_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["concept", "context_ref"],
+      "properties": {
+        "concept": { "$ref": "#/$defs/qname" },
+        "context_ref": { "type": "string", "minLength": 1 },
+        "unit_ref": { "type": "string" },
+        "value": { "type": "string" },
+        "is_nil": { "type": "boolean" },
+        "decimals": { "type": ["string", "null"] },
+        "precision": { "type": ["string", "null"] },
+        "source": {
+          "type": "object",
+          "description": "Optional location hints (best-effort; not necessarily stable across parsers).",
+          "additionalProperties": true
+        }
+      }
+    },
+    "p001_duplicate_fact_set": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["concept", "context_ref", "fact_count", "facts"],
+      "properties": {
+        "concept": { "$ref": "#/$defs/qname" },
+        "context_ref": { "type": "string", "minLength": 1 },
+        "unit_ref": { "type": "string" },
+        "fact_count": { "type": "integer", "minimum": 2 },
+        "facts": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "$ref": "#/$defs/fact_ref" }
+        },
+        "value_conflict": {
+          "type": "boolean",
+          "description": "True when duplicates disagree by value after normalization."
+        }
+      }
+    },
+    "p002_extension_anchoring_issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["extension_concept", "issue_codes", "used_fact_examples"],
+      "properties": {
+        "extension_concept": { "$ref": "#/$defs/qname" },
+        "issue_codes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Objective-only (e.g., unanchored, anchor_target_abstract, period_type_mismatch, type_mismatch, anchor_to_extension)."
+        },
+        "anchors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["arcrole", "target_concept"],
+            "properties": {
+              "arcrole": { "type": "string", "minLength": 1 },
+              "target_concept": { "$ref": "#/$defs/qname" }
+            }
+          }
+        },
+        "used_fact_examples": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/fact_ref" },
+          "description": "Small capped list of representative fact refs demonstrating use."
+        }
+      }
+    },
+    "p004_fact_numeric_typing_issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["issue_code", "fact"],
+      "properties": {
+        "issue_code": { "type": "string", "minLength": 1 },
+        "fact": { "$ref": "#/$defs/fact_ref" },
+        "concept_type": { "type": "string" },
+        "unit_measures": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/qname" }
+        }
+      }
+    },
+    "p005_taxonomy_reference_issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["issue_code"],
+      "properties": {
+        "issue_code": { "type": "string", "minLength": 1 },
+        "schema_refs": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "namespaces_in_facts": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "details": { "type": "string" }
+      }
+    },
+    "p007_duplicate_context_signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entity", "period", "dimensions", "context_ids", "fact_count"],
+      "properties": {
+        "entity": { "$ref": "#/$defs/entity_id" },
+        "period": { "$ref": "#/$defs/period" },
+        "dimensions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/dimension_member" }
+        },
+        "context_ids": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "fact_count": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Number of facts referencing any of these contexts (to avoid dead-code contexts)."
+        }
+      }
+    }
+  }
+}
+

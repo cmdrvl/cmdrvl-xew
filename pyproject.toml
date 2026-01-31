@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cmdrvl-xew"
+version = "0.1.0"
+description = "CMD+RVL XBRL Early Warning (XEW) Evidence Pack generator"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "cmdrvl"}]
+
+dependencies = []
+
+[project.optional-dependencies]
+jsonschema = ["jsonschema>=4"]
+
+[project.scripts]
+cmdrvl-xew = "cmdrvl_xew.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+cmdrvl_xew = [
+  "schemas/*.json",
+  "spec/*.json",
+]

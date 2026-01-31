@@ -1,0 +1,123 @@
+{
+  "schema_id": "cmdrvl.xew_findings",
+  "schema_version": "1.0",
+  "generated_at": "2026-01-30T00:00:00Z",
+  "toolchain": {
+    "cmdrvl_xew_version": "dev",
+    "arelle_version": "dev",
+    "config": {
+      "resolution_mode": "offline_preferred"
+    }
+  },
+  "input": {
+    "issuer_name": "ExampleCo, Inc.",
+    "cik": "0000123456",
+    "accession": "0000123456-26-000005",
+    "form": "10-Q",
+    "filed_date": "2026-01-20",
+    "period_end": "2025-12-31",
+    "primary_document_url": "https://www.sec.gov/Archives/edgar/data/123456/000012345626000005/primary-document.html",
+    "primary_artifact_path": "artifacts/primary.html",
+    "comparator": {
+      "accession": "0000123456-25-000004",
+      "primary_document_url": "https://www.sec.gov/Archives/edgar/data/123456/000012345625000004/primary-document.html",
+      "primary_artifact_path": "artifacts/comparator_primary.html"
+    }
+  },
+  "artifacts": [
+    {
+      "path": "artifacts/primary.html",
+      "role": "primary_ixbrl",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/123456/000012345626000005/primary-document.html",
+      "retrieved_at": "2026-01-20T14:32:10Z",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "bytes": 123456,
+      "content_type": "text/html"
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "XEW-F-0000123456-26-000005-XEW-P001",
+      "pattern_id": "XEW-P001",
+      "pattern_name": "Duplicate Facts With Equivalent Context/Unit",
+      "alert_eligible": true,
+      "status": "detected",
+      "human_review_required": true,
+      "break_triggers": [
+        {
+          "id": "XEW-BT004",
+          "summary": "Validator/enforcement tightening can surface duplicate-fact ambiguity as a fatal error."
+        }
+      ],
+      "observed": {
+        "instance_count_total": 1,
+        "instance_count_included": 1,
+        "truncated": false,
+        "instances": [
+          {
+            "instance_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "kind": "duplicate_fact_set",
+            "primary": true,
+            "data": {
+              "concept": {
+                "clark": "{http://fasb.org/us-gaap/2025-01-31}Revenues",
+                "namespace": "http://fasb.org/us-gaap/2025-01-31",
+                "local_name": "Revenues",
+                "prefixed": "us-gaap:Revenues"
+              },
+              "context_ref": "C_2025Q4",
+              "unit_ref": "U_USD",
+              "fact_count": 2,
+              "facts": [
+                {
+                  "concept": {
+                    "clark": "{http://fasb.org/us-gaap/2025-01-31}Revenues",
+                    "namespace": "http://fasb.org/us-gaap/2025-01-31",
+                    "local_name": "Revenues",
+                    "prefixed": "us-gaap:Revenues"
+                  },
+                  "context_ref": "C_2025Q4",
+                  "unit_ref": "U_USD",
+                  "value": "1000000",
+                  "is_nil": false,
+                  "decimals": "-3",
+                  "precision": null
+                },
+                {
+                  "concept": {
+                    "clark": "{http://fasb.org/us-gaap/2025-01-31}Revenues",
+                    "namespace": "http://fasb.org/us-gaap/2025-01-31",
+                    "local_name": "Revenues",
+                    "prefixed": "us-gaap:Revenues"
+                  },
+                  "context_ref": "C_2025Q4",
+                  "unit_ref": "U_USD",
+                  "value": "1000000",
+                  "is_nil": false,
+                  "decimals": "-3",
+                  "precision": null
+                }
+              ],
+              "value_conflict": false
+            }
+          }
+        ]
+      },
+      "mechanism": "Two facts share the same concept/context/unit, creating an ambiguity that can become reject-risk under enforcement tightening or disclosure changes that surface collisions.",
+      "why_not_fatal_yet": "The filing was accepted as filed; duplicate-fact ambiguity can be tolerated or resolved implicitly by consumers.",
+      "repro": {
+        "steps": [
+          "Load artifacts/primary.html into the XEW detector runner (Arelle-backed).",
+          "Run XEW-P001 grouping on (concept, contextRef, unitRef) across facts.",
+          "Confirm at least one group has count >= 2 and matches the instance signature."
+        ]
+      }
+    }
+  ],
+  "repro": {
+    "steps": [
+      "Verify sha256 of artifacts/primary.html matches the artifacts[] entry.",
+      "Run the same toolchain versions recorded in toolchain/."
+    ]
+  }
+}

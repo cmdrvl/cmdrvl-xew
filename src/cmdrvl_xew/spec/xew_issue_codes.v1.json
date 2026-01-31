@@ -1,0 +1,16 @@
+{
+  "schema_id": "cmdrvl.xew_issue_codes",
+  "schema_version": "1.0",
+  "generated_at": "2026-01-30T00:00:00Z",
+  "patterns": {
+    "XEW-P002": {
+      "issue_codes": []
+    },
+    "XEW-P004": {
+      "issue_codes": []
+    },
+    "XEW-P005": {
+      "issue_codes": []
+    }
+  }
+}
