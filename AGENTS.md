@@ -59,11 +59,29 @@ This repo does NOT own monitoring/orchestration or alert delivery.
 
 ## CLI Contract (v1)
 
-- `cmdrvl-xew pack`: generate an Evidence Pack directory.
+- `cmdrvl-xew flatten`: normalize EDGAR directory structure into flat Arelle-compatible layout.
+- `cmdrvl-xew pack`: generate an Evidence Pack directory (requires flat input from `flatten`).
 - `cmdrvl-xew verify-pack`: verify `pack_manifest.json` hashes and (optionally) validate `xew_findings.json` against the schema.
 
+Workflow:
+```bash
+# 1. Flatten EDGAR directory structure
+cmdrvl-xew flatten sample/0000034903-25-000063 --out /tmp/flat
+
+# 2. Generate Evidence Pack from flat artifacts
+cmdrvl-xew pack --primary /tmp/flat/frt-20250930.htm \
+    --pack-id XEW-EP-0001 --out /tmp/pack \
+    --cik 0000034903 --accession 0000034903-25-000063 \
+    --form 10-Q --filed-date 2025-11-01 \
+    --primary-document-url "https://www.sec.gov/..."
+
+# 3. Verify the pack
+cmdrvl-xew verify-pack --pack /tmp/pack --validate-schema
+```
+
 Design intent:
-- Artifact-driven mode should be first-class (production systems already stage artifacts).
+- Artifact-driven mode is first-class (production systems already stage artifacts).
+- The `flatten` command handles EDGAR's typed directory structure.
 - EDGAR-driven fetch mode is optional and must respect SEC access policies if implemented.
 
 ---
@@ -79,18 +97,28 @@ cmdrvl-xew/
 |  |- XEW_EVIDENCE_PACK_CONTRACT_V1.MD
 |  `- examples/
 |     `- xew_findings.example.v1.json
+|- sample/                          # Sample EDGAR accessions for testing
+|  `- <accession>/
+|     |- 10-Q/ or 10-K/             # Primary iXBRL
+|     |- EX-101.SCH/                # Extension schema
+|     |- EX-101.CAL/                # Calculation linkbase
+|     |- EX-101.DEF/                # Definition linkbase
+|     |- EX-101.LAB/                # Label linkbase
+|     `- EX-101.PRE/                # Presentation linkbase
 |- src/
 |  `- cmdrvl_xew/
-|     |- cli.py
-|     |- pack.py
-|     |- verify.py
+|     |- cli.py                     # CLI entrypoint
+|     |- flatten.py                 # EDGAR -> flat directory normalization
+|     |- pack.py                    # Evidence Pack generation
+|     |- verify.py                  # Pack verification
+|     |- util.py                    # Shared utilities
 |     |- schemas/
 |     |  `- xew_findings.schema.v1.json
 |     `- spec/
 |        |- xew_issue_codes.v1.json
 |        `- xew_rule_basis_map.v1.json
 `- pyproject.toml
-``````
+```
 
 ---
 

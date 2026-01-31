@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+from .flatten import run_flatten
 from .pack import run_pack
 from .verify import run_verify_pack
 
@@ -13,7 +14,28 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="cmdrvl-xew")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    pack = sub.add_parser("pack", help="Generate an Evidence Pack")
+    # flatten: normalize EDGAR directory structure
+    flatten = sub.add_parser(
+        "flatten",
+        help="Flatten EDGAR directory into Arelle-compatible flat layout",
+    )
+    flatten.add_argument(
+        "edgar_dir",
+        help="EDGAR accession directory (e.g., sample/0000034903-25-000063)",
+    )
+    flatten.add_argument(
+        "--out",
+        required=True,
+        help="Output directory for flattened files",
+    )
+    flatten.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite existing files in output directory",
+    )
+
+    # pack: generate Evidence Pack
+    pack = sub.add_parser("pack", help="Generate an Evidence Pack from flat artifacts directory")
     pack.add_argument("--pack-id", required=True)
     pack.add_argument("--out", required=True, help="Output directory (will be created)")
 
@@ -41,6 +63,8 @@ def main(argv: list[str] | None = None) -> int:
 
     args = p.parse_args(argv)
 
+    if args.cmd == "flatten":
+        return run_flatten(args)
     if args.cmd == "pack":
         args._invocation_argv = ["cmdrvl-xew", *argv]
         return run_pack(args)

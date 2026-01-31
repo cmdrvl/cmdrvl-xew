@@ -128,6 +128,53 @@ To avoid "it worked on my machine" evidence packs:
 - Cap noisy instance lists with explicit truncation fields (see schema).
 - Do not emit semantic claims that cannot be derived from artifacts (e.g., "semantically unrelated" anchoring).
 
+## Artifact Preparation (flatten)
+
+EDGAR downloads use typed directories that don't match the flat relative paths in iXBRL/schema files:
+
+```
+EDGAR structure:                    XBRL references:
+0000034903-25-000063/               schemaRef="frt-20250930.xsd"
+├── 10-Q/frt-20250930.htm           linkbaseRef="frt-20250930_cal.xml"
+├── EX-101.SCH/frt-20250930.xsd
+├── EX-101.CAL/frt-20250930_cal.xml
+└── ...
+```
+
+The `cmdrvl-xew flatten` command normalizes EDGAR directories into a flat layout that Arelle can load:
+
+```bash
+cmdrvl-xew flatten sample/0000034903-25-000063 --out /tmp/flat
+```
+
+Output:
+```
+/tmp/flat/
+├── frt-20250930.htm      (primary iXBRL)
+├── frt-20250930.xsd      (extension schema)
+├── frt-20250930_cal.xml  (calculation linkbase)
+├── frt-20250930_def.xml  (definition linkbase)
+├── frt-20250930_lab.xml  (label linkbase)
+└── frt-20250930_pre.xml  (presentation linkbase)
+```
+
+The `pack` command expects flat input directories.
+
+## External Taxonomy Resolution
+
+Extension schemas import standard taxonomies via HTTPS:
+```xml
+<xs:import namespace="http://fasb.org/us-gaap/2025"
+           schemaLocation="https://xbrl.fasb.org/us-gaap/2025/elts/us-gaap-2025.xsd"/>
+```
+
+For reproducibility, use Arelle's taxonomy package cache or offline mode:
+- Download taxonomy packages from FASB/SEC
+- Configure Arelle's `--packages` option or taxonomy cache directory
+- Record taxonomy inputs in `toolchain/toolchain.json`
+
+When online resolution is used, the `retrieved_at` timestamp and any fetched taxonomy files should be recorded in the Evidence Pack.
+
 ## Arelle Integration Points (where custom logic runs)
 Custom detectors run after the filing is loaded and the XBRL model is built (facts/contexts/units/relationships available).
 

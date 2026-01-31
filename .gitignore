@@ -208,3 +208,6 @@ __marimo__/
 
 # cmdrvl-xew output
 XEW-EP-*/
+
+# Local sample filings (do not commit real filings)
+sample/

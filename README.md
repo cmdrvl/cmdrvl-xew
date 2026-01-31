@@ -6,6 +6,15 @@ It produces a reproducible **Evidence Pack** directory from inline XBRL (iXBRL) 
 
 The goal is **deterministic reproduction**: a third party (issuer team, filing vendor, auditor) should be able to verify what the detector saw using only the Evidence Pack.
 
+## Built on Arelle
+
+cmdrvl-xew uses [Arelle](https://arelle.org) — the open-source XBRL processor — to load and validate inline XBRL filings. Arelle provides the XBRL model (facts, contexts, units, relationships); cmdrvl-xew adds targeted fragility detection and Evidence Pack generation on top.
+
+- **Arelle handles**: iXBRL parsing, DTS resolution, SEC/EFM validation
+- **cmdrvl-xew adds**: pattern detection (XEW-P001–P005), deterministic Evidence Packs, reproducible findings
+
+This is not a fork or replacement — it's a focused layer that turns Arelle's XBRL model into actionable early-warning output.
+
 ## What XEW Is (and Is Not)
 
 XEW is:
@@ -83,6 +92,24 @@ cmdrvl-xew verify-pack --pack ./XEW-EP-0007
 # With optional schema validation
 cmdrvl-xew verify-pack --pack ./XEW-EP-0007 --validate-schema
 ```
+
+## Sample Filings (Local Only)
+
+Real filings should not be committed. The local `sample/` folder is gitignored and intended only for ad-hoc testing.
+
+Fetch a small set of representative extracted iXBRL filings from S3:
+
+```bash
+scripts/fetch_samples.sh
+
+# Optional overrides
+scripts/fetch_samples.sh --profile edgar-readonly --bucket edgar-data-full --out sample
+```
+
+Included accessions:
+- 10-K: `0001140361-25-010025`
+- 10-Q: `0000034903-25-000063`
+- 8-K: `0000036104-25-000066`
 
 ## Project Plan
 
