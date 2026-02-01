@@ -217,7 +217,11 @@ class DetectorRegistry:
         def get_priority(finding: DetectorFinding) -> int:
             return PATTERN_PRIORITIES.get(finding.pattern_id, 999)  # 999 for unknown patterns
 
-        prioritized_findings = sorted(alert_eligible_findings, key=get_priority)
+        # Deterministic tie-breakers for equal priority
+        def sort_key(finding: DetectorFinding) -> tuple[int, str, str]:
+            return (get_priority(finding), finding.pattern_id, finding.finding_id)
+
+        prioritized_findings = sorted(alert_eligible_findings, key=sort_key)
         selected_finding = prioritized_findings[0]
 
         self.logger.info(f"Selected highest priority finding: {selected_finding.pattern_id} "
