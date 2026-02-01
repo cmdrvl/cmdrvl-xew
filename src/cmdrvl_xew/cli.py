@@ -4,6 +4,7 @@ import argparse
 import re
 import sys
 from datetime import datetime
+from pathlib import Path
 from urllib.parse import urlparse
 
 from .fetch import run_fetch
@@ -135,6 +136,39 @@ def validate_pack_args(args: argparse.Namespace) -> list[str]:
             parsed_comp = urlparse(comp_url)
             if not parsed_comp.scheme or not parsed_comp.netloc:
                 errors.append("Comparator primary document URL must be a valid URL")
+
+    # Validate primary file exists
+    try:
+        primary_path = Path(args.primary)
+        if not primary_path.exists():
+            errors.append(f"Primary file does not exist: {args.primary}")
+        elif not primary_path.is_file():
+            errors.append(f"Primary path is not a file: {args.primary}")
+        else:
+            # Convert to absolute path for consistency
+            args.primary = str(primary_path.resolve())
+    except AttributeError:
+        errors.append("Primary file path is required")
+
+    # Validate output directory
+    try:
+        out_path = Path(args.out)
+        if out_path.exists():
+            if not out_path.is_dir():
+                errors.append(f"Output path exists but is not a directory: {args.out}")
+            elif any(out_path.iterdir()):
+                errors.append(f"Output directory must be empty: {args.out}")
+        # Note: Directory will be created if it doesn't exist
+    except AttributeError:
+        errors.append("Output directory is required")
+
+    # Validate comparator file if specified
+    if hasattr(args, 'comparator_primary_artifact_path') and args.comparator_primary_artifact_path:
+        comp_path = Path(args.comparator_primary_artifact_path)
+        if not comp_path.exists():
+            errors.append(f"Comparator primary file does not exist: {args.comparator_primary_artifact_path}")
+        elif not comp_path.is_file():
+            errors.append(f"Comparator primary path is not a file: {args.comparator_primary_artifact_path}")
 
     # Validate resolution mode
     if hasattr(args, 'resolution_mode') and args.resolution_mode:
