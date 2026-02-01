@@ -12,6 +12,7 @@ from urllib.parse import urljoin, urlparse
 from .artifacts import ArtifactCollectionError, ArtifactHash, collect_artifacts, create_pack_directory_structure, compute_pack_layout
 from . import __version__
 from .comparator import comparator_policy, ComparatorPolicy
+from .comparator_selection import select_comparator_and_history
 from .exit_codes import ExitCode, exit_invocation_error, exit_processing_error
 from .taxonomy import NonRedistributableReference, non_redistributable_reference_from_path
 from .util import FileHash, sha256_file, utc_now_iso, write_json
@@ -418,6 +419,7 @@ def run_pack(args: argparse.Namespace) -> int:
     # Validate comparator policy compliance
     comparator_provided = bool(args.comparator_accession)
     comparator_policy_result = _validate_comparator_policy(args.form, comparator_provided)
+    derive_artifact_urls = getattr(args, "derive_artifact_urls", False)
 
     # Collect and copy artifacts into the pack.
     primary_src = Path(args.primary).resolve()
@@ -438,7 +440,7 @@ def run_pack(args: argparse.Namespace) -> int:
         collected,
         primary_document_url=args.primary_document_url,
         primary_pack_path=primary_dst_rel.as_posix(),
-        allow_derivation=args.derive_artifact_urls,
+        allow_derivation=derive_artifact_urls,
     )
 
     for artifact in collected:
@@ -506,7 +508,7 @@ def run_pack(args: argparse.Namespace) -> int:
             else:
                 dest_rel = Path("artifacts") / "comparator" / artifact.path
                 role = artifact.role
-                if args.derive_artifact_urls:
+                if derive_artifact_urls:
                     source_url = urljoin(comparator_base_url, artifact.path) if comparator_base_url else None
                 else:
                     source_url = None
@@ -541,6 +543,89 @@ def run_pack(args: argparse.Namespace) -> int:
                 )
             )
 
+    history_metadata: list[dict[str, str]] = []
+    history_entries = getattr(args, "history_entries", None) or []
+    for entry in history_entries:
+        history_accession = _normalize_accession(entry["accession"])
+        history_primary_url = entry["primary_document_url"]
+        history_primary_src = Path(entry["primary_artifact_path"]).resolve()
+        if not history_primary_src.is_file():
+            exit_invocation_error(f"History primary artifact not found: {history_primary_src}")
+
+        history_root = history_primary_src.parent
+        try:
+            history_collected = collect_artifacts(history_primary_src, root_dir=history_root)
+        except ArtifactCollectionError as e:
+            exit_processing_error(str(e))
+
+        history_primary_dst_rel = Path("artifacts") / "history" / history_accession / "primary.html"
+        history_base_url = _derive_base_url(history_primary_url) if derive_artifact_urls else None
+
+        for artifact in history_collected:
+            src_path = history_root / artifact.path
+
+            if artifact.role == "primary_ixbrl":
+                dest_rel = history_primary_dst_rel
+                role = "edgar_artifact"
+                source_url = history_primary_url
+            else:
+                dest_rel = Path("artifacts") / "history" / history_accession / artifact.path
+                role = artifact.role
+                source_url = urljoin(history_base_url, artifact.path) if history_base_url else None
+
+            dest_rel_str = dest_rel.as_posix()
+
+            if _is_non_redistributable_artifact(str(src_path), source_url):
+                non_redistributable_ref = _create_non_redistributable_reference(
+                    artifact, source_url or "", history_root
+                )
+                non_redistributable_refs.append(non_redistributable_ref)
+                continue
+
+            if dest_rel_str in seen_paths:
+                exit_processing_error(f"Artifact path collision in pack: {dest_rel_str}")
+            seen_paths.add(dest_rel_str)
+
+            dest_abs = out_dir / dest_rel
+            dest_abs.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src_path, dest_abs)
+
+            if source_url:
+                source_url_map[dest_rel_str] = source_url
+
+            pack_artifacts.append(
+                ArtifactHash(
+                    path=dest_rel_str,
+                    role=role,
+                    sha256=artifact.sha256,
+                    bytes=artifact.bytes,
+                )
+            )
+
+        history_metadata.append(
+            {
+                "accession": history_accession,
+                "primary_document_url": history_primary_url,
+                "primary_artifact_path": history_primary_dst_rel.as_posix(),
+            }
+        )
+
+    # Perform comparator and history window selection for marker analysis
+    explicit_comparator = None
+    if comparator_provided and comparator_primary_dst_rel:
+        explicit_comparator = {
+            "accession": args.comparator_accession,
+            "primary_document_url": args.comparator_primary_document_url,
+            "primary_artifact_path": comparator_primary_dst_rel.as_posix(),
+        }
+
+    selection_result = select_comparator_and_history(
+        form=args.form,
+        explicit_comparator=explicit_comparator,
+        history_entries=history_metadata,
+        filed_date=args.filed_date
+    )
+
     # Generate toolchain metadata using ToolchainRecorder
     toolchain_path_rel = Path("toolchain") / "toolchain.json"
     toolchain_recorder = ToolchainRecorder()
@@ -555,6 +640,12 @@ def run_pack(args: argparse.Namespace) -> int:
             "comparator_required": comparator_policy_result.comparator_required,
             "comparator_provided": comparator_provided,
             "policy_notes": comparator_policy_result.notes,
+        },
+        "history_window": history_metadata,
+        "comparator_selection": {
+            "selected_comparator": selection_result.selected_comparator,
+            "history_window": selection_result.history_window,
+            "selection_metadata": selection_result.selection_metadata,
         },
     }
 
