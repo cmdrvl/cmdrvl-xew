@@ -240,6 +240,10 @@ def _run_xew_detection(primary_path: Path, artifacts_dir: Path, context_metadata
             "gate_enforcement": True,
         }
 
+        # Include comparator selection data for marker detectors
+        if "comparator_selection" in context_metadata:
+            detection_config["comparator_selection"] = context_metadata["comparator_selection"]
+
         detection_context = DetectorContext(
             primary_document_path=str(primary_path),
             artifacts_dir=str(artifacts_dir),
@@ -610,22 +614,6 @@ def run_pack(args: argparse.Namespace) -> int:
             }
         )
 
-    # Perform comparator and history window selection for marker analysis
-    explicit_comparator = None
-    if comparator_provided and comparator_primary_dst_rel:
-        explicit_comparator = {
-            "accession": args.comparator_accession,
-            "primary_document_url": args.comparator_primary_document_url,
-            "primary_artifact_path": comparator_primary_dst_rel.as_posix(),
-        }
-
-    selection_result = select_comparator_and_history(
-        form=args.form,
-        explicit_comparator=explicit_comparator,
-        history_entries=history_metadata,
-        current_accession=args.accession
-    )
-
     # Generate toolchain metadata using ToolchainRecorder
     toolchain_path_rel = Path("toolchain") / "toolchain.json"
     toolchain_recorder = ToolchainRecorder()
@@ -659,14 +647,22 @@ def run_pack(args: argparse.Namespace) -> int:
         ],
     }
 
+    # Prepare minimal toolchain config (only settings that affect tool behavior)
+    toolchain_config = {
+        "resolution_mode": args.resolution_mode,
+        # Add other tool behavior settings here as needed
+    }
+
     # Record complete toolchain metadata
-    toolchain_obj = toolchain_recorder.record_toolchain(reproducibility_config)
+    toolchain_obj = toolchain_recorder.record_toolchain(toolchain_config)
 
     # Override Arelle version if provided via CLI
     if args.arelle_version:
         toolchain_obj["arelle_version"] = args.arelle_version
 
-    write_json(out_dir / toolchain_path_rel, toolchain_obj)
+    # Write comprehensive reproducibility config to toolchain.json
+    # (includes full pack generation metadata for reproducibility)
+    write_json(out_dir / toolchain_path_rel, reproducibility_config)
 
     # === Extract Issuer/Filing Metadata from iXBRL ===
 
@@ -690,6 +686,9 @@ def run_pack(args: argparse.Namespace) -> int:
         "primary_artifact_path": str(primary_dst_rel).replace("\\", "/"),
     }
 
+    # Prepare extension metadata (fields not in v1 schema)
+    ext_metadata = {}
+
     # Embed extracted issuer metadata (CLI args take precedence)
     if extracted_metadata:
         # Entity information
@@ -697,24 +696,24 @@ def run_pack(args: argparse.Namespace) -> int:
             input_obj["issuer_name"] = extracted_metadata.entity.legal_name
 
         if extracted_metadata.entity.ticker_symbol:
-            input_obj["ticker_symbol"] = extracted_metadata.entity.ticker_symbol
+            ext_metadata["ticker_symbol"] = extracted_metadata.entity.ticker_symbol
 
         # Filing information
         if extracted_metadata.filing.document_period_end_date and not args.period_end:
             input_obj["period_end"] = extracted_metadata.filing.document_period_end_date
 
         if extracted_metadata.filing.fiscal_year:
-            input_obj["fiscal_year"] = extracted_metadata.filing.fiscal_year
+            ext_metadata["fiscal_year"] = extracted_metadata.filing.fiscal_year
 
         if extracted_metadata.filing.fiscal_period:
-            input_obj["fiscal_period"] = extracted_metadata.filing.fiscal_period
+            ext_metadata["fiscal_period"] = extracted_metadata.filing.fiscal_period
 
         if extracted_metadata.filing.amendment_flag is not None:
-            input_obj["amendment_flag"] = extracted_metadata.filing.amendment_flag
+            ext_metadata["amendment_flag"] = extracted_metadata.filing.amendment_flag
 
         # Source provenance for verification
         if extracted_metadata.source_provenance:
-            input_obj["metadata_provenance"] = extracted_metadata.source_provenance
+            ext_metadata["metadata_provenance"] = extracted_metadata.source_provenance
 
     # CLI overrides (these take precedence over extracted metadata)
     if args.issuer_name:
@@ -738,18 +737,19 @@ def run_pack(args: argparse.Namespace) -> int:
             comparator_src_path = Path(args.comparator_primary_artifact_path).resolve()
             comparator_metadata = extract_metadata(comparator_src_path)
 
-            # Add extracted comparator metadata
+            # Add extracted comparator metadata (schema-compliant fields only)
             if comparator_metadata.entity.legal_name:
                 comparator_info["issuer_name"] = comparator_metadata.entity.legal_name
 
             if comparator_metadata.filing.document_period_end_date:
                 comparator_info["period_end"] = comparator_metadata.filing.document_period_end_date
 
+            # Store extra comparator fields in ext_metadata
             if comparator_metadata.filing.fiscal_year:
-                comparator_info["fiscal_year"] = comparator_metadata.filing.fiscal_year
+                ext_metadata.setdefault("comparator", {})["fiscal_year"] = comparator_metadata.filing.fiscal_year
 
             if comparator_metadata.filing.fiscal_period:
-                comparator_info["fiscal_period"] = comparator_metadata.filing.fiscal_period
+                ext_metadata.setdefault("comparator", {})["fiscal_period"] = comparator_metadata.filing.fiscal_period
 
             import logging
             logging.info(f"Extracted comparator metadata: entity={comparator_metadata.entity.legal_name or 'N/A'}, period_end={comparator_metadata.filing.document_period_end_date or 'N/A'}")
@@ -784,6 +784,22 @@ def run_pack(args: argparse.Namespace) -> int:
             entry["source_url"] = source_url
         findings_artifacts.append(entry)
 
+    # Perform comparator and history window selection for marker analysis
+    explicit_comparator = None
+    if comparator_provided and comparator_primary_dst_rel:
+        explicit_comparator = {
+            "accession": args.comparator_accession,
+            "primary_document_url": args.comparator_primary_document_url,
+            "primary_artifact_path": comparator_primary_dst_rel.as_posix(),
+        }
+
+    selection_result = select_comparator_and_history(
+        form=args.form,
+        explicit_comparator=explicit_comparator,
+        history_entries=history_metadata,
+        current_accession=args.accession
+    )
+
     # Run XEW detection on the primary document
     try:
         xbrl_findings = _run_xew_detection(
@@ -795,6 +811,11 @@ def run_pack(args: argparse.Namespace) -> int:
                 "form": form,
                 "filed_date": filed_date,
                 "primary_document_url": args.primary_document_url,
+                "comparator_selection": {
+                    "selected_comparator": selection_result.selected_comparator,
+                    "history_window": selection_result.history_window,
+                    "selection_metadata": selection_result.selection_metadata,
+                },
             }
         )
     except Exception as e:
@@ -823,7 +844,8 @@ def run_pack(args: argparse.Namespace) -> int:
         context=detection_context,
         artifacts=findings_artifacts,
         toolchain=toolchain_obj,
-        input_metadata=input_obj
+        input_metadata=input_obj,
+        ext_metadata=ext_metadata
     )
 
     # Use PackManifestBuilder for deterministic manifest generation

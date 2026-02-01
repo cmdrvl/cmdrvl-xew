@@ -35,11 +35,22 @@ class ToolchainRecorder:
         Returns:
             Complete toolchain metadata dictionary
         """
+        # Create expanded config that includes recording metadata and system info
+        # These go in config since the toolchain object has additionalProperties=false
+        expanded_config = config.copy()
+        expanded_config.update({
+            "recorded_at": utc_now_iso(),
+            "system_info": {
+                "platform": platform.platform(),
+                "python_version": platform.python_version(),
+                "architecture": platform.machine()
+            }
+        })
+
         toolchain = {
             "cmdrvl_xew_version": self._get_cmdrvl_xew_version(),
             "arelle_version": self._get_arelle_version(),
-            "config": config,
-            "recorded_at": utc_now_iso(),
+            "config": expanded_config,
         }
 
         # Add optional components when available
@@ -50,13 +61,6 @@ class ToolchainRecorder:
         dqcrt_version = self._get_dqcrt_version()
         if dqcrt_version:
             toolchain["dqcrt_version"] = dqcrt_version
-
-        # Add system information for debugging
-        toolchain["system_info"] = {
-            "platform": platform.platform(),
-            "python_version": platform.python_version(),
-            "architecture": platform.machine()
-        }
 
         self.logger.info(f"Recorded toolchain: cmdrvl-xew {toolchain['cmdrvl_xew_version']}, "
                         f"Arelle {toolchain['arelle_version']}")

@@ -27,7 +27,8 @@ class FindingsWriter:
                       context: DetectorContext,
                       artifacts: List[Dict[str, Any]],
                       toolchain: Dict[str, Any],
-                      input_metadata: Dict[str, Any]) -> None:
+                      input_metadata: Dict[str, Any],
+                      ext_metadata: Optional[Dict[str, Any]] = None) -> None:
         """
         Write findings to JSON file with deterministic ordering.
 
@@ -37,10 +38,11 @@ class FindingsWriter:
             artifacts: List of artifact metadata
             toolchain: Toolchain information
             input_metadata: Input filing metadata
+            ext_metadata: Extension metadata for forward compatibility
         """
         # Generate complete findings document
         findings_doc = self._build_findings_document(
-            findings, context, artifacts, toolchain, input_metadata
+            findings, context, artifacts, toolchain, input_metadata, ext_metadata
         )
 
         # Write with deterministic formatting
@@ -53,7 +55,8 @@ class FindingsWriter:
                                context: DetectorContext,
                                artifacts: List[Dict[str, Any]],
                                toolchain: Dict[str, Any],
-                               input_metadata: Dict[str, Any]) -> Dict[str, Any]:
+                               input_metadata: Dict[str, Any],
+                               ext_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Build the complete findings JSON document."""
 
         # Convert findings to schema format with deterministic ordering
@@ -72,6 +75,10 @@ class FindingsWriter:
             "artifacts": artifacts,
             "findings": findings_json
         }
+
+        # Add extension metadata if provided (forward compatibility)
+        if ext_metadata:
+            document["ext"] = ext_metadata
 
         return document
 
