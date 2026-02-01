@@ -244,6 +244,51 @@ def validate_pack_args(args: argparse.Namespace) -> list[str]:
     if hasattr(args, 'comparator_primary_document_url') and args.comparator_primary_document_url:
         validate_url(args.comparator_primary_document_url.strip(), "Comparator primary document URL")
 
+    # Validate history window inputs if provided
+    history_accessions = getattr(args, "history_accession", None)
+    history_urls = getattr(args, "history_primary_document_url", None)
+    history_paths = getattr(args, "history_primary_artifact_path", None)
+    history_lists = [lst for lst in (history_accessions, history_urls, history_paths) if lst]
+
+    if history_lists:
+        if not (history_accessions and history_urls and history_paths):
+            errors.append(
+                "History inputs require all three flags: --history-accession, "
+                "--history-primary-document-url, --history-primary-artifact-path"
+            )
+        elif not (len(history_accessions) == len(history_urls) == len(history_paths)):
+            errors.append("History input lists must be the same length")
+        else:
+            history_entries = []
+            for accession, url, path in zip(history_accessions, history_urls, history_paths):
+                if not accession_pattern.match(accession.strip()):
+                    errors.append(f"History accession must match format: NNNNNNNNNN-NN-NNNNNN ({accession})")
+                    continue
+                if not validate_url(url.strip(), "History primary document URL"):
+                    continue
+                hist_path = Path(path)
+                if not hist_path.exists():
+                    errors.append(f"History primary file does not exist: {path}")
+                    continue
+                if not hist_path.is_file():
+                    errors.append(f"History primary path is not a file: {path}")
+                    continue
+
+                history_entries.append(
+                    {
+                        "accession": accession.strip(),
+                        "primary_document_url": url.strip(),
+                        "primary_artifact_path": str(hist_path.resolve()),
+                    }
+                )
+
+            if len(history_entries) == len(history_accessions):
+                history_entries.sort(key=lambda item: item["accession"])
+                args.history_entries = history_entries
+                args.history_accession = [entry["accession"] for entry in history_entries]
+                args.history_primary_document_url = [entry["primary_document_url"] for entry in history_entries]
+                args.history_primary_artifact_path = [entry["primary_artifact_path"] for entry in history_entries]
+
     return errors
 
 
@@ -325,6 +370,12 @@ def main(argv: list[str] | None = None) -> int:
     pack.add_argument("--comparator-accession")
     pack.add_argument("--comparator-primary-document-url")
     pack.add_argument("--comparator-primary-artifact-path")
+    pack.add_argument("--history-accession", action="append",
+                     help="Historical filing accession (NNNNNNNNNN-NN-NNNNNN format) for adaptation markers. Can be specified multiple times.")
+    pack.add_argument("--history-primary-document-url", action="append",
+                     help="Historical filing primary document URL. Must match count of --history-accession.")
+    pack.add_argument("--history-primary-artifact-path", action="append",
+                     help="Path to historical filing primary artifact file. Must match count of --history-accession.")
 
     pack.add_argument("--retrieved-at", help="ISO 8601 UTC timestamp; default: now")
     pack.add_argument("--arelle-version", help="Record the Arelle version used")
