@@ -162,7 +162,14 @@ def run_verify_pack(args: argparse.Namespace) -> int:
         else:
             log_success(f"Evidence Pack SHA256 verified: {calc_pack_sha256}")
 
-    # Step 4: Schema validation if requested
+    # Step 4: Toolchain metadata checks
+    tc_errors, tc_warnings = _check_toolchain_metadata(pack_dir, quiet=quiet, verbose=verbose)
+    error_count += tc_errors
+    warning_count += tc_warnings
+    if tc_errors and fail_fast:
+        return 2
+
+    # Step 5: Schema validation if requested
     if getattr(args, 'validate_schema', False):
         log_info("Validating xew_findings.json schema...")
         schema_result = _validate_findings_schema(pack_dir, quiet=quiet, verbose=verbose)
@@ -174,7 +181,7 @@ def run_verify_pack(args: argparse.Namespace) -> int:
                 if fail_fast:
                     return 2
 
-    # Step 5: Final status report
+    # Step 6: Final status report
     if not quiet or verbose:
         print("\n" + "="*50)
         print("VERIFICATION SUMMARY")
@@ -280,3 +287,64 @@ def _validate_findings_schema(pack_dir: Path, quiet: bool = False, verbose: bool
         error_msg = f"Schema validation error: {e}"
         log_error(error_msg)
         return SchemaValidationResult(success=False, is_missing_optional=False, error_message=error_msg)
+
+
+def _check_toolchain_metadata(pack_dir: Path, quiet: bool = False, verbose: bool = False) -> tuple[int, int]:
+    """Return (error_count, warning_count) for toolchain/toolchain.json checks."""
+    toolchain_path = pack_dir / "toolchain" / "toolchain.json"
+    errors = 0
+    warnings = 0
+
+    def log_error(msg: str) -> None:
+        nonlocal errors
+        errors += 1
+        if not quiet:
+            print(f"ERROR: {msg}", file=sys.stderr)
+
+    def log_warning(msg: str) -> None:
+        nonlocal warnings
+        warnings += 1
+        if not quiet:
+            print(f"WARNING: {msg}", file=sys.stderr)
+
+    def log_info(msg: str) -> None:
+        if verbose:
+            print(f"INFO: {msg}")
+
+    if not toolchain_path.is_file():
+        log_warning("toolchain/toolchain.json not found")
+        return errors, warnings
+
+    try:
+        log_info("Parsing toolchain/toolchain.json...")
+        toolchain = json.loads(toolchain_path.read_text(encoding="utf-8"))
+    except Exception as e:
+        log_error(f"Failed to parse toolchain/toolchain.json: {e}")
+        return errors, warnings
+
+    if not isinstance(toolchain, dict):
+        log_warning("toolchain/toolchain.json is not a JSON object")
+        return errors, warnings
+
+    _warn_missing_or_unknown(toolchain, "cmdrvl_xew_version", log_warning)
+    _warn_missing_or_unknown(toolchain, "arelle_version", log_warning)
+
+    config = toolchain.get("config")
+    if config is None:
+        log_warning("toolchain/config missing")
+    elif not isinstance(config, dict):
+        log_warning("toolchain/config is not an object")
+
+    return errors, warnings
+
+
+def _warn_missing_or_unknown(toolchain: dict, key: str, log_warning: callable) -> None:
+    value = toolchain.get(key)
+    if value is None:
+        log_warning(f"toolchain/{key} missing")
+        return
+    if not isinstance(value, str) or not value.strip():
+        log_warning(f"toolchain/{key} not a non-empty string")
+        return
+    if value.strip().lower() == "unknown":
+        log_warning(f"toolchain/{key} is 'unknown'")
