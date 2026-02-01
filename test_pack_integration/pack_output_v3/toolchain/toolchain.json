@@ -1,0 +1,21 @@
+{
+  "arelle_version": "unknown",
+  "cmdrvl_xew_version": "944f021652f0",
+  "config": {
+    "comparator_policy": {
+      "base_form": "8-K",
+      "comparator_provided": false,
+      "comparator_required": false,
+      "form": "8-K",
+      "policy_notes": "No comparator by default; event-driven filings are compared only when explicitly provided."
+    },
+    "pack_id": "TEST-001",
+    "resolution_mode": "offline_only"
+  },
+  "recorded_at": "2026-02-01T13:43:42Z",
+  "system_info": {
+    "architecture": "x86_64",
+    "platform": "macOS-26.2-x86_64-i386-64bit",
+    "python_version": "3.9.7"
+  }
+}

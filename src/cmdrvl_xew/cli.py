@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
 from datetime import datetime
@@ -137,16 +138,23 @@ def validate_pack_args(args: argparse.Namespace) -> list[str]:
             if not parsed_comp.scheme or not parsed_comp.netloc:
                 errors.append("Comparator primary document URL must be a valid URL")
 
-    # Validate primary file exists
+    # Validate primary file exists and is readable
     try:
         primary_path = Path(args.primary)
         if not primary_path.exists():
             errors.append(f"Primary file does not exist: {args.primary}")
         elif not primary_path.is_file():
             errors.append(f"Primary path is not a file: {args.primary}")
+        elif not primary_path.suffix.lower() in ['.htm', '.html', '.xml']:
+            errors.append(f"Primary file must be HTML or XML format (got {primary_path.suffix}): {args.primary}")
         else:
-            # Convert to absolute path for consistency
-            args.primary = str(primary_path.resolve())
+            # Try to read the file to verify accessibility
+            try:
+                primary_path.read_text(encoding='utf-8', errors='ignore')
+                # Convert to absolute path for consistency
+                args.primary = str(primary_path.resolve())
+            except (PermissionError, OSError) as e:
+                errors.append(f"Cannot read primary file: {e}")
     except AttributeError:
         errors.append("Primary file path is required")
 
@@ -175,6 +183,99 @@ def validate_pack_args(args: argparse.Namespace) -> list[str]:
         valid_modes = ["offline_only", "offline_preferred", "online_only", "hybrid"]
         if args.resolution_mode not in valid_modes:
             errors.append(f"Resolution mode must be one of: {', '.join(valid_modes)}")
+
+    # Validate derive-artifact-urls flag usage
+    if hasattr(args, 'derive_artifact_urls') and args.derive_artifact_urls:
+        # This flag is only meaningful with EDGAR-sourced URLs
+        if hasattr(args, 'primary_document_url') and args.primary_document_url:
+            parsed = urlparse(args.primary_document_url)
+            if parsed.netloc not in ['www.sec.gov', 'data.sec.gov', 'xbrl.sec.gov']:
+                errors.append("--derive-artifact-urls should only be used with SEC EDGAR URLs")
+        else:
+            errors.append("--derive-artifact-urls requires --primary-document-url to be provided")
+
+
+    # Validate output directory constraints
+    try:
+        out_path = Path(args.out)
+        if out_path.exists():
+            if not out_path.is_dir():
+                errors.append(f"Output path exists but is not a directory: {args.out}")
+            elif any(out_path.iterdir()):
+                errors.append(f"Output directory is not empty (Evidence Pack requires empty directory): {args.out}")
+        else:
+            # Check if parent directory exists and is writable
+            parent = out_path.parent
+            if not parent.exists():
+                errors.append(f"Output parent directory does not exist: {parent}")
+            elif not os.access(parent, os.W_OK):
+                errors.append(f"Output parent directory is not writable: {parent}")
+    except AttributeError:
+        errors.append("Output directory is required")
+
+    # Enhanced URL validation with specific checks
+    def validate_url(url: str, field_name: str) -> bool:
+        """Validate URL format with SEC-specific checks."""
+        try:
+            parsed = urlparse(url)
+            if not parsed.scheme:
+                errors.append(f"{field_name} must include URL scheme (http/https)")
+                return False
+            if parsed.scheme not in ['http', 'https']:
+                errors.append(f"{field_name} must use http or https scheme")
+                return False
+            if not parsed.netloc:
+                errors.append(f"{field_name} must include domain name")
+                return False
+            if not parsed.path or parsed.path == '/':
+                errors.append(f"{field_name} must include document path")
+                return False
+            return True
+        except Exception:
+            errors.append(f"{field_name} is not a valid URL")
+            return False
+
+    # Re-validate primary document URL with enhanced checks
+    if hasattr(args, 'primary_document_url') and args.primary_document_url:
+        validate_url(args.primary_document_url.strip(), "Primary document URL")
+
+    # Validate comparator URL if provided
+    if hasattr(args, 'comparator_primary_document_url') and args.comparator_primary_document_url:
+        validate_url(args.comparator_primary_document_url.strip(), "Comparator primary document URL")
+
+    return errors
+
+
+def validate_verify_args(args: argparse.Namespace) -> list[str]:
+    """
+    Validate and normalize verify-pack command arguments.
+
+    Returns:
+        List of validation error messages (empty if valid)
+    """
+    errors = []
+
+    # Validate Evidence Pack directory exists and contains required files
+    try:
+        pack_path = Path(args.pack)
+        if not pack_path.exists():
+            errors.append(f"Evidence Pack directory does not exist: {args.pack}")
+        elif not pack_path.is_dir():
+            errors.append(f"Evidence Pack path is not a directory: {args.pack}")
+        else:
+            # Check for required manifest file
+            manifest_path = pack_path / "pack_manifest.json"
+            if not manifest_path.is_file():
+                errors.append(f"Evidence Pack missing pack_manifest.json: {manifest_path}")
+            else:
+                # Normalize to absolute path
+                args.pack = str(pack_path.resolve())
+    except AttributeError:
+        errors.append("Evidence Pack directory is required")
+
+    # Validate mutually exclusive flags
+    if hasattr(args, 'quiet') and hasattr(args, 'verbose') and args.quiet and args.verbose:
+        errors.append("Cannot use both --quiet and --verbose flags")
 
     return errors
 
@@ -227,10 +328,19 @@ def main(argv: list[str] | None = None) -> int:
     pack.add_argument("--retrieved-at", help="ISO 8601 UTC timestamp; default: now")
     pack.add_argument("--arelle-version", help="Record the Arelle version used")
     pack.add_argument("--resolution-mode", default="offline_preferred")
+    pack.add_argument(
+        "--derive-artifact-urls",
+        action="store_true",
+        help="Derive artifact source_url from primary document URL base (EDGAR-driven only)",
+    )
 
     verify = sub.add_parser("verify-pack", help="Verify an Evidence Pack")
     verify.add_argument("--pack", required=True, help="Evidence Pack directory")
-    verify.add_argument("--validate-schema", action="store_true", help="Validate xew_findings.json if jsonschema is installed")
+    verify.add_argument("--validate-schema", action="store_true", help="Validate xew_findings.json against JSON schema")
+    verify.add_argument("--quiet", "-q", action="store_true", help="Only output errors and warnings")
+    verify.add_argument("--verbose", "-v", action="store_true", help="Show detailed verification information")
+    verify.add_argument("--check-only", action="store_true", help="Check pack structure without validating file hashes (faster)")
+    verify.add_argument("--fail-fast", action="store_true", help="Stop verification on first error")
 
     fetch = sub.add_parser("fetch", help="Download EDGAR accession artifacts into a flat directory")
     fetch.add_argument("--cik", required=True)
@@ -254,6 +364,12 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         return run_pack(args)
     if args.cmd == "verify-pack":
+        # Validate verify-pack command arguments
+        validation_errors = validate_verify_args(args)
+        if validation_errors:
+            for error in validation_errors:
+                print(f"Error: {error}", file=sys.stderr)
+            return 1
         return run_verify_pack(args)
     if args.cmd == "fetch":
         return run_fetch(args)

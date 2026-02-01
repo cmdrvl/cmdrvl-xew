@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <title>Test iXBRL Document with Metadata</title>
+    <link:schemaRef xlink:href="test-schema.xsd" xlink:type="simple"/>
+</head>
+<body>
+    <p>This is a test iXBRL document with embedded metadata.</p>
+
+    <!-- DEI Facts for testing metadata extraction -->
+    <div>
+        <span concept="dei:EntityRegistrantName">Acme Corporation</span>
+        <span concept="dei:EntityCentralIndexKey">0001234567</span>
+        <span concept="dei:DocumentType">8-K</span>
+        <span concept="dei:DocumentPeriodEndDate">2026-01-31</span>
+        <span concept="dei:DocumentFiscalYearFocus">2026</span>
+        <span concept="dei:DocumentFiscalPeriodFocus">Q4</span>
+    </div>
+
+    <p>Filing Date: 2026-01-31</p>
+</body>
+</html>

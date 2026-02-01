@@ -126,12 +126,12 @@ cmdrvl-xew pack \
 
 Notes:
 - The output directory must not exist (or must be empty).
-- `pack` copies the primary HTML to `artifacts/primary.html` and includes any referenced schema/linkbase artifacts located in the same flat directory.
+- `pack` currently copies only the primary HTML to `artifacts/primary.html`; referenced schema/linkbase artifacts are not yet included (planned).
 - Findings are currently empty until detectors are implemented.
 
 Pack flags:
 - Required: `--pack-id`, `--out`, `--primary`, `--cik`, `--accession`, `--form`, `--filed-date`, `--primary-document-url`
-- Optional: `--issuer-name`, `--period-end`, `--retrieved-at`, `--arelle-version`, `--resolution-mode`
+- Optional: `--issuer-name`, `--period-end`, `--retrieved-at`, `--arelle-version`, `--resolution-mode`, `--derive-artifact-urls`
 - Comparator (optional, all-or-nothing): `--comparator-accession`, `--comparator-primary-document-url`, `--comparator-primary-artifact-path`
 
 ### Verify a Pack

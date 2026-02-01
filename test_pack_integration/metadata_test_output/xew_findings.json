@@ -1,0 +1,45 @@
+{
+  "artifacts": [
+    {
+      "bytes": 281,
+      "content_type": "application/octet-stream",
+      "path": "artifacts/test-schema.xsd",
+      "retrieved_at": "2026-02-01T13:49:54Z",
+      "role": "edgar_artifact",
+      "sha256": "f408b65acbf58dd17944811c5ddf1eb343e1a9a6fb5f9671216af88dd9f98094"
+    }
+  ],
+  "findings": [],
+  "generated_at": "2026-02-01T13:49:54.757145+00:00",
+  "input": {
+    "accession": "1234567890-12-123456",
+    "cik": "0001234567",
+    "filed_date": "2026-01-31",
+    "form": "8-K",
+    "primary_artifact_path": "artifacts/primary.html",
+    "primary_document_url": "https://example.com/test.html"
+  },
+  "schema_id": "cmdrvl.xew_findings",
+  "schema_version": "1.0",
+  "toolchain": {
+    "arelle_version": "unknown",
+    "cmdrvl_xew_version": "6ed332e2abe9",
+    "config": {
+      "comparator_policy": {
+        "base_form": "8-K",
+        "comparator_provided": false,
+        "comparator_required": false,
+        "form": "8-K",
+        "policy_notes": "No comparator by default; event-driven filings are compared only when explicitly provided."
+      },
+      "pack_id": "metadata-test",
+      "resolution_mode": "offline_only"
+    },
+    "recorded_at": "2026-02-01T13:49:54Z",
+    "system_info": {
+      "architecture": "x86_64",
+      "platform": "macOS-26.2-x86_64-i386-64bit",
+      "python_version": "3.9.7"
+    }
+  }
+}

@@ -19,6 +19,7 @@ from .pack_manifest import PackManifestBuilder
 from .toolchain import ToolchainRecorder
 from .detectors.registry import get_registry
 from .detectors._base import DetectorContext
+from .metadata import extract_metadata
 
 _ACCESSION_RE = re.compile(r"^\d{10}-\d{2}-\d{6}$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -219,7 +220,24 @@ def _run_xew_detection(primary_path: Path, artifacts_dir: Path, context_metadata
         registry = get_registry()
         registry.auto_discover("cmdrvl_xew.detectors")
 
+        # Load rule basis map for Gate enforcement and citations
+        rule_basis_map_path = Path(__file__).parent / "spec" / "xew_rule_basis_map.v1.json"
+        if rule_basis_map_path.exists():
+            registry.load_rule_basis_map(rule_basis_map_path)
+            import logging
+            logging.info(f"Loaded rule basis map from {rule_basis_map_path}")
+        else:
+            import logging
+            logging.warning(f"Rule basis map not found at {rule_basis_map_path}, Gate enforcement may be limited")
+
         # Create detector context
+        # Enhanced configuration for detection
+        detection_config = {
+            "primary_document_url": context_metadata.get("primary_document_url", ""),
+            "enable_all_patterns": True,
+            "gate_enforcement": True,
+        }
+
         detection_context = DetectorContext(
             primary_document_path=str(primary_path),
             artifacts_dir=str(artifacts_dir),
@@ -227,8 +245,8 @@ def _run_xew_detection(primary_path: Path, artifacts_dir: Path, context_metadata
             accession=context_metadata["accession"],
             form=context_metadata["form"],
             filed_date=context_metadata["filed_date"],
-            primary_document_url="",  # Not needed for local detection
-            xbrl_model=None  # Will be loaded by detectors as needed
+            xbrl_model=None,  # Will be loaded below
+            config=detection_config
         )
 
         # Load XBRL model using Arelle (simplified placeholder)
@@ -245,11 +263,24 @@ def _run_xew_detection(primary_path: Path, artifacts_dir: Path, context_metadata
             logging.warning(f"Failed to load XBRL model: {e}, using mock model")
             detection_context.xbrl_model = _create_mock_xbrl_model(primary_path)
 
-        # Run all registered detectors
+        # Run all registered detectors with enhanced logging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Running {len(registry.list_patterns())} detectors with Gate enforcement enabled")
+
         findings = registry.run_detectors(detection_context)
 
-        import logging
-        logging.info(f"XEW detection completed: {len(findings)} findings from {len(registry.list_patterns())} detectors")
+        logger.info(f"XEW detection completed: {len(findings)} findings from {len(registry.list_patterns())} detectors")
+
+        # Enhanced findings summary
+        if findings:
+            alert_eligible_count = sum(1 for f in findings if f.alert_eligible)
+            suppressed_count = sum(1 for f in findings if f.status == "suppressed")
+            pattern_coverage = sorted(set(f.pattern_id for f in findings))
+            logger.info(f"Findings summary: {alert_eligible_count} alert-eligible, {suppressed_count} suppressed by Gate")
+            logger.info(f"Pattern coverage: {pattern_coverage}")
+        else:
+            logger.info("No findings detected")
 
         return findings
 
@@ -406,11 +437,19 @@ def run_pack(args: argparse.Namespace) -> int:
         collected,
         primary_document_url=args.primary_document_url,
         primary_pack_path=primary_dst_rel.as_posix(),
+        allow_derivation=args.derive_artifact_urls,
     )
 
     for artifact in collected:
         src_path = root_dir / artifact.path
-        source_url = source_url_map.get(f"artifacts/{artifact.path}")
+
+        # Standard artifact processing (copy to pack)
+        if artifact.role == "primary_ixbrl":
+            dest_rel = primary_dst_rel
+        else:
+            dest_rel = Path("artifacts") / artifact.path
+        dest_rel_str = dest_rel.as_posix()
+        source_url = source_url_map.get(dest_rel_str)
 
         # Check if this artifact should be treated as non-redistributable
         if _is_non_redistributable_artifact(str(src_path), source_url):
@@ -421,12 +460,6 @@ def run_pack(args: argparse.Namespace) -> int:
             non_redistributable_refs.append(non_redistributable_ref)
             continue
 
-        # Standard artifact processing (copy to pack)
-        if artifact.role == "primary_ixbrl":
-            dest_rel = primary_dst_rel
-        else:
-            dest_rel = Path("artifacts") / artifact.path
-        dest_rel_str = dest_rel.as_posix()
         if dest_rel_str in seen_paths:
             raise SystemExit(f"Artifact path collision in pack: {dest_rel_str}")
         seen_paths.add(dest_rel_str)
@@ -443,6 +476,69 @@ def run_pack(args: argparse.Namespace) -> int:
                 bytes=artifact.bytes,
             )
         )
+
+    comparator_primary_dst_rel = None
+    if args.comparator_accession:
+        if not args.comparator_primary_document_url or not args.comparator_primary_artifact_path:
+            raise SystemExit("Comparator requires --comparator-primary-document-url and --comparator-primary-artifact-path")
+
+        comparator_src = Path(args.comparator_primary_artifact_path).resolve()
+        if not comparator_src.is_file():
+            raise SystemExit(f"Comparator primary artifact not found: {comparator_src}")
+
+        comparator_root = comparator_src.parent
+        try:
+            comparator_collected = collect_artifacts(comparator_src, root_dir=comparator_root)
+        except ArtifactCollectionError as e:
+            raise SystemExit(str(e))
+
+        comparator_primary_dst_rel = Path("artifacts") / "comparator_primary.html"
+        comparator_base_url = _derive_base_url(args.comparator_primary_document_url)
+
+        for artifact in comparator_collected:
+            src_path = comparator_root / artifact.path
+
+            if artifact.role == "primary_ixbrl":
+                dest_rel = comparator_primary_dst_rel
+                role = "edgar_artifact"
+                source_url = args.comparator_primary_document_url
+            else:
+                dest_rel = Path("artifacts") / "comparator" / artifact.path
+                role = artifact.role
+                if args.derive_artifact_urls:
+                    source_url = urljoin(comparator_base_url, artifact.path) if comparator_base_url else None
+                else:
+                    source_url = None
+
+            dest_rel_str = dest_rel.as_posix()
+
+            # Check if this artifact should be treated as non-redistributable
+            if _is_non_redistributable_artifact(str(src_path), source_url):
+                non_redistributable_ref = _create_non_redistributable_reference(
+                    artifact, source_url or "", comparator_root
+                )
+                non_redistributable_refs.append(non_redistributable_ref)
+                continue
+
+            if dest_rel_str in seen_paths:
+                raise SystemExit(f"Artifact path collision in pack: {dest_rel_str}")
+            seen_paths.add(dest_rel_str)
+
+            dest_abs = out_dir / dest_rel
+            dest_abs.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src_path, dest_abs)
+
+            if source_url:
+                source_url_map[dest_rel_str] = source_url
+
+            pack_artifacts.append(
+                ArtifactHash(
+                    path=dest_rel_str,
+                    role=role,
+                    sha256=artifact.sha256,
+                    bytes=artifact.bytes,
+                )
+            )
 
     # Generate toolchain metadata using ToolchainRecorder
     toolchain_path_rel = Path("toolchain") / "toolchain.json"
@@ -470,6 +566,19 @@ def run_pack(args: argparse.Namespace) -> int:
 
     write_json(out_dir / toolchain_path_rel, toolchain_obj)
 
+    # === Extract Issuer/Filing Metadata from iXBRL ===
+
+    # Extract metadata from primary document using the dedicated metadata module
+    try:
+        extracted_metadata = extract_metadata(primary_src)
+        import logging
+        logging.info(f"Extracted metadata from {primary_src}: entity={extracted_metadata.entity.legal_name or 'N/A'}, period_end={extracted_metadata.filing.document_period_end_date or 'N/A'}")
+    except Exception as e:
+        import logging
+        logging.warning(f"Failed to extract metadata from {primary_src}: {e}, using CLI args only")
+        extracted_metadata = None
+
+    # Build input metadata with extracted iXBRL metadata where available
     input_obj = {
         "cik": cik,
         "accession": accession,
@@ -478,19 +587,76 @@ def run_pack(args: argparse.Namespace) -> int:
         "primary_document_url": args.primary_document_url,
         "primary_artifact_path": str(primary_dst_rel).replace("\\", "/"),
     }
+
+    # Embed extracted issuer metadata (CLI args take precedence)
+    if extracted_metadata:
+        # Entity information
+        if extracted_metadata.entity.legal_name and not args.issuer_name:
+            input_obj["issuer_name"] = extracted_metadata.entity.legal_name
+
+        if extracted_metadata.entity.ticker_symbol:
+            input_obj["ticker_symbol"] = extracted_metadata.entity.ticker_symbol
+
+        # Filing information
+        if extracted_metadata.filing.document_period_end_date and not args.period_end:
+            input_obj["period_end"] = extracted_metadata.filing.document_period_end_date
+
+        if extracted_metadata.filing.fiscal_year:
+            input_obj["fiscal_year"] = extracted_metadata.filing.fiscal_year
+
+        if extracted_metadata.filing.fiscal_period:
+            input_obj["fiscal_period"] = extracted_metadata.filing.fiscal_period
+
+        if extracted_metadata.filing.amendment_flag is not None:
+            input_obj["amendment_flag"] = extracted_metadata.filing.amendment_flag
+
+        # Source provenance for verification
+        if extracted_metadata.source_provenance:
+            input_obj["metadata_provenance"] = extracted_metadata.source_provenance
+
+    # CLI overrides (these take precedence over extracted metadata)
     if args.issuer_name:
         input_obj["issuer_name"] = args.issuer_name
     if args.period_end:
         input_obj["period_end"] = args.period_end
 
     if args.comparator_accession:
-        if not args.comparator_primary_document_url or not args.comparator_primary_artifact_path:
-            raise SystemExit("Comparator requires --comparator-primary-document-url and --comparator-primary-artifact-path")
-        input_obj["comparator"] = {
+        if comparator_primary_dst_rel is None:
+            raise SystemExit("Comparator artifacts not collected")
+
+        # Build base comparator metadata
+        comparator_info = {
             "accession": _normalize_accession(args.comparator_accession),
             "primary_document_url": args.comparator_primary_document_url,
-            "primary_artifact_path": args.comparator_primary_artifact_path,
+            "primary_artifact_path": comparator_primary_dst_rel.as_posix(),
         }
+
+        # Extract metadata from comparator document if available
+        try:
+            comparator_src_path = Path(args.comparator_primary_artifact_path).resolve()
+            comparator_metadata = extract_metadata(comparator_src_path)
+
+            # Add extracted comparator metadata
+            if comparator_metadata.entity.legal_name:
+                comparator_info["issuer_name"] = comparator_metadata.entity.legal_name
+
+            if comparator_metadata.filing.document_period_end_date:
+                comparator_info["period_end"] = comparator_metadata.filing.document_period_end_date
+
+            if comparator_metadata.filing.fiscal_year:
+                comparator_info["fiscal_year"] = comparator_metadata.filing.fiscal_year
+
+            if comparator_metadata.filing.fiscal_period:
+                comparator_info["fiscal_period"] = comparator_metadata.filing.fiscal_period
+
+            import logging
+            logging.info(f"Extracted comparator metadata: entity={comparator_metadata.entity.legal_name or 'N/A'}, period_end={comparator_metadata.filing.document_period_end_date or 'N/A'}")
+
+        except Exception as e:
+            import logging
+            logging.warning(f"Failed to extract comparator metadata: {e}, using basic comparator info only")
+
+        input_obj["comparator"] = comparator_info
 
     # === XEW Detection Pipeline Integration ===
 
@@ -526,6 +692,7 @@ def run_pack(args: argparse.Namespace) -> int:
                 "accession": accession,
                 "form": form,
                 "filed_date": filed_date,
+                "primary_document_url": args.primary_document_url,
             }
         )
     except Exception as e:
@@ -544,8 +711,8 @@ def run_pack(args: argparse.Namespace) -> int:
         accession=accession,
         form=form,
         filed_date=filed_date,
-        primary_document_url=args.primary_document_url,
-        xbrl_model=None  # Would be loaded during actual detection
+        xbrl_model=None,  # Would be loaded during actual detection
+        config={}  # Configuration parameters
     )
 
     # Write findings using the dedicated writer
@@ -586,7 +753,8 @@ def run_pack(args: argparse.Namespace) -> int:
     )
 
     # Build and write manifest
-    manifest_builder.build_manifest(out_dir / "pack_manifest.json")
+    manifest_data = manifest_builder.build_manifest()
+    write_json(out_dir / "pack_manifest.json", manifest_data)
 
     # === Generate Reproducible Verification Steps ===
 
@@ -607,16 +775,15 @@ def run_pack(args: argparse.Namespace) -> int:
     write_json(repro_steps_path, repro_steps)
 
     # Add repro steps to manifest
-    repro_steps_hash, _ = sha256_file(repro_steps_path)
     manifest_builder.add_file(
         path="reproduction_steps.json",
-        sha256=repro_steps_hash,
         role="reproduction_steps",
-        source_metadata={}
+        file_path=repro_steps_path
     )
 
     # Rebuild manifest with repro steps included
-    manifest_builder.build_manifest(out_dir / "pack_manifest.json")
+    manifest_data = manifest_builder.build_manifest()
+    write_json(out_dir / "pack_manifest.json", manifest_data)
 
     return 0
 
@@ -645,6 +812,7 @@ def _build_source_url_map(
     *,
     primary_document_url: str,
     primary_pack_path: str,
+    allow_derivation: bool,
 ) -> dict[str, str]:
     base_url = _derive_base_url(primary_document_url)
     source_url_map: dict[str, str] = {}
@@ -653,7 +821,7 @@ def _build_source_url_map(
         if artifact.role == "primary_ixbrl":
             source_url_map[primary_pack_path] = primary_document_url
             continue
-        if base_url:
+        if allow_derivation and base_url:
             rel = artifact.path.lstrip("/")
             source_url_map[f"artifacts/{rel}"] = urljoin(base_url, rel)
 

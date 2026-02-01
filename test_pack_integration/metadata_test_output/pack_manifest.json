@@ -1,0 +1,31 @@
+{
+  "files": [
+    {
+      "bytes": 281,
+      "path": "artifacts/test-schema.xsd",
+      "role": "edgar_artifact",
+      "sha256": "f408b65acbf58dd17944811c5ddf1eb343e1a9a6fb5f9671216af88dd9f98094"
+    },
+    {
+      "bytes": 2830,
+      "path": "reproduction_steps.json",
+      "role": "reproduction_steps",
+      "sha256": "d43da8e533bc30e84780ba9e3ac9b6de8295a08c95540c0cc29d43ddddaf33fa"
+    },
+    {
+      "bytes": 604,
+      "path": "toolchain/toolchain.json",
+      "role": "toolchain",
+      "sha256": "8e48b08309e726cecb00e5ba1aa96d09a09d31b8b6ffbb009c6a37c2eabd1091"
+    },
+    {
+      "bytes": 1357,
+      "path": "xew_findings.json",
+      "role": "xew_output",
+      "sha256": "1c614b0351a0a673875a4cee4bdd362c13f7796f281f4c3d6897212422ec1d24"
+    }
+  ],
+  "pack_id": "metadata-test",
+  "pack_sha256": "874594c60608f5200a3a1825b9f7add5543a3c9058a24c1b6fc47d11cd9fad2a",
+  "retrieved_at": "2026-02-01T13:49:54Z"
+}

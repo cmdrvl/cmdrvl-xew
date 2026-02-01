@@ -1,0 +1,69 @@
+{
+  "generated_at": "2026-02-01T13:47:43Z",
+  "pack_id": "test-pack-123",
+  "recreation": {
+    "command": "cmdrvl-xew pack --pack-id=test-pack-123 --out=./reproduced-pack --cik=0001234567 --accession=1234567890-12-123456 --form=8-K --filed-date=2026-01-31 --primary=artifacts/primary.html --primary-document-url=<URL_TO_PRIMARY_DOCUMENT>",
+    "description": "Steps to recreate Evidence Pack from scratch (requires EDGAR access)",
+    "disclaimer": "Recreation requires external EDGAR data and may produce different timestamps but identical findings",
+    "notes": [
+      "Replace <URL_TO_PRIMARY_DOCUMENT> with actual EDGAR URL",
+      "Requires network access to download EDGAR artifacts",
+      "Results should be deterministically identical (within timestamp fields)",
+      "Must use cmdrvl-xew version 0.1.0 for identical results"
+    ]
+  },
+  "repro_version": "1.0",
+  "tool_info": {
+    "description": "XBRL Early Warning (XEW) detection engine",
+    "name": "cmdrvl-xew",
+    "version": "0.1.0"
+  },
+  "validation_notes": [
+    "Evidence Pack contains all artifacts needed for verification",
+    "Findings are deterministic given identical input artifacts",
+    "Hash validations ensure artifact integrity",
+    "Schema validation confirms findings format compliance",
+    "Generated with cmdrvl-xew v0.1.0 on 2026-02-01T13:47:43Z"
+  ],
+  "verification": {
+    "description": "Steps to verify this Evidence Pack and reproduce findings",
+    "requirements": {
+      "dependencies": [
+        "cmdrvl-xew==0.1.0",
+        "arelle>=1.2"
+      ],
+      "os": "Linux, macOS, or Windows with Python 3.9+",
+      "python": ">=3.9"
+    },
+    "steps": [
+      {
+        "command": "cmdrvl-xew verify-pack --pack . --validate-schema",
+        "description": "Verify Evidence Pack integrity",
+        "expected_result": "All hash validations pass, schema validation succeeds",
+        "purpose": "Confirm pack contents match manifest and schema",
+        "step": 1
+      },
+      {
+        "command": "cat xew_findings.json",
+        "description": "Examine detection findings",
+        "expected_result": "JSON with findings array and metadata",
+        "purpose": "Review detected patterns and evidence",
+        "step": 2
+      },
+      {
+        "command": "ls -la artifacts/primary.html",
+        "description": "Inspect primary XBRL document",
+        "expected_result": "Primary iXBRL document at artifacts/primary.html",
+        "purpose": "Verify primary document is included and accessible",
+        "step": 3
+      },
+      {
+        "command": "cat toolchain/toolchain.json",
+        "description": "Review toolchain metadata",
+        "expected_result": "Tool versions, configuration, and process metadata",
+        "purpose": "Understand exact environment used for detection",
+        "step": 4
+      }
+    ]
+  }
+}

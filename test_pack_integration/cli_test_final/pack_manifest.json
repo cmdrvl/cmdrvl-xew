@@ -1,0 +1,31 @@
+{
+  "files": [
+    {
+      "bytes": 281,
+      "path": "artifacts/test-schema.xsd",
+      "role": "edgar_artifact",
+      "sha256": "f408b65acbf58dd17944811c5ddf1eb343e1a9a6fb5f9671216af88dd9f98094"
+    },
+    {
+      "bytes": 2830,
+      "path": "reproduction_steps.json",
+      "role": "reproduction_steps",
+      "sha256": "409a74a59d1701b55a893600dc89505fb6be9ec16edd059a5cc4317cd48e4d62"
+    },
+    {
+      "bytes": 604,
+      "path": "toolchain/toolchain.json",
+      "role": "toolchain",
+      "sha256": "9c167b39ca25e7afa955cf1af0569702c938c379ed0db1125bf833e766c1f2ff"
+    },
+    {
+      "bytes": 1357,
+      "path": "xew_findings.json",
+      "role": "xew_output",
+      "sha256": "d8a96ef7443f81cac10ba087cfdb0818b2700ed44bb60a392b0c5b7635e00401"
+    }
+  ],
+  "pack_id": "test-pack-123",
+  "pack_sha256": "e12f5a1616d78065fa53c46bc59897a62296ed0720395bce28b66c6e3dde4216",
+  "retrieved_at": "2026-02-01T13:47:43Z"
+}

@@ -91,7 +91,7 @@ def _extract_schema_ref(ixbrl_path: Path) -> str | None:
 
 def _schema_basename(schema_ref: str) -> str:
     parsed = urlparse(schema_ref)
-    path = parsed.path if parsed.scheme or parsed.netloc else schema_ref
+    path = parsed.path or schema_ref
     return Path(path).stem
 
 
