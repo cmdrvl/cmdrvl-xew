@@ -1,7 +1,7 @@
 """Detector registry for XEW pattern detection."""
 
 import logging
-from typing import Dict, List, Type, Set
+from typing import Dict, List, Type, Set, Any
 from pathlib import Path
 import importlib
 import json
@@ -151,10 +151,19 @@ class DetectorRegistry:
                 self.logger.info(f"Running detector: {pattern_id}")
                 detector_findings = detector.detect(context)
 
-                # Enrich findings with rule basis and issue codes
+                # Enrich findings with rule basis, issue codes, and break triggers
                 for finding in detector_findings:
                     if not finding.rule_basis:
                         finding.rule_basis = self.get_rule_basis(pattern_id)
+
+                    # Apply Gate enforcement: demote findings without valid rule basis
+                    finding = self.apply_gate_enforcement(finding, pattern_id)
+
+                    # Select the most specific break trigger
+                    if not finding.break_triggers:
+                        selected_trigger = self.select_break_trigger(pattern_id)
+                        if selected_trigger:
+                            finding.break_triggers = [selected_trigger]
 
                 findings.extend(detector_findings)
                 self.logger.info(f"Detector {pattern_id} produced {len(detector_findings)} findings")
@@ -167,6 +176,175 @@ class DetectorRegistry:
 
         self.logger.info(f"All detectors completed, {len(findings)} total findings")
         return findings
+
+    def select_break_trigger(self, pattern_id: str) -> Dict[str, str]:
+        """
+        Select the most specific break trigger for a pattern.
+
+        Implements deterministic break trigger selection based on specificity rules.
+        Lower numbered triggers (BT001, BT002, etc.) are considered more specific.
+
+        Args:
+            pattern_id: Pattern ID (e.g., 'XEW-P001')
+
+        Returns:
+            Single break trigger dict with 'id' and 'summary', or empty dict if none available
+        """
+        if pattern_id not in self._detectors:
+            return {}
+
+        detector = self._detectors[pattern_id]
+
+        try:
+            available_triggers = detector.get_break_triggers()
+
+            if not available_triggers:
+                self.logger.warning(f"No break triggers available for {pattern_id}")
+                return {}
+
+            # Sort by trigger ID for deterministic selection
+            # Lower numbers are more specific (BT001 > BT002 > BT003 > BT004)
+            sorted_triggers = sorted(available_triggers, key=lambda t: t.get('id', 'ZZZ'))
+
+            selected = sorted_triggers[0]
+            self.logger.debug(f"Selected break trigger for {pattern_id}: {selected.get('id')}")
+
+            return selected
+
+        except Exception as e:
+            self.logger.error(f"Failed to select break trigger for {pattern_id}: {e}")
+            return {}
+
+    def apply_gate_enforcement(self, finding: DetectorFinding, pattern_id: str) -> DetectorFinding:
+        """
+        Apply Gate enforcement: demote findings without valid rule basis.
+
+        The Gate requires that every finding shipped as an alert must have:
+        1. At least one pinned rule basis citation
+        2. Valid retrieved_at and sha256 for reproducibility
+
+        If these requirements are not met, the finding is demoted to non-alert status
+        but preserved for analysis and debugging.
+
+        Args:
+            finding: DetectorFinding to check and potentially demote
+            pattern_id: Pattern ID for logging
+
+        Returns:
+            DetectorFinding with potentially updated alert eligibility
+        """
+        try:
+            # Check if finding has valid rule basis
+            if not self._has_valid_rule_basis(finding, pattern_id):
+                self.logger.warning(f"Gate enforcement: demoting {pattern_id} finding due to missing/invalid rule basis")
+
+                # Demote to non-alert status
+                finding.alert_eligible = False
+                finding.status = "suppressed_by_gate"
+
+                # Add gate suppression reason to finding
+                if not hasattr(finding, 'gate_suppression_reason'):
+                    finding.gate_suppression_reason = "Missing or invalid rule basis citation"
+
+                # Ensure human review is required for demoted findings
+                finding.human_review_required = True
+
+                self.logger.info(f"Finding {finding.finding_id} demoted by Gate enforcement")
+            else:
+                self.logger.debug(f"Finding {finding.finding_id} passed Gate enforcement")
+
+            return finding
+
+        except Exception as e:
+            self.logger.error(f"Error during Gate enforcement for {pattern_id}: {e}")
+            # In case of error, demote for safety
+            finding.alert_eligible = False
+            finding.status = "suppressed_by_gate"
+            finding.gate_suppression_reason = f"Gate enforcement error: {e}"
+            return finding
+
+    def _has_valid_rule_basis(self, finding: DetectorFinding, pattern_id: str) -> bool:
+        """
+        Check if finding has valid rule basis citations for Gate enforcement.
+
+        Args:
+            finding: Finding to validate
+            pattern_id: Pattern ID for context
+
+        Returns:
+            True if valid rule basis exists, False otherwise
+        """
+        try:
+            # Check if rule basis is present
+            if not finding.rule_basis:
+                self.logger.debug(f"No rule basis found for {pattern_id}")
+                return False
+
+            # Validate each citation
+            valid_citations = 0
+            for citation in finding.rule_basis:
+                if self._is_valid_citation(citation):
+                    valid_citations += 1
+
+            if valid_citations == 0:
+                self.logger.debug(f"No valid citations found for {pattern_id}")
+                return False
+
+            self.logger.debug(f"Found {valid_citations} valid citations for {pattern_id}")
+            return True
+
+        except Exception as e:
+            self.logger.warning(f"Error validating rule basis for {pattern_id}: {e}")
+            return False
+
+    def _is_valid_citation(self, citation: Dict[str, Any]) -> bool:
+        """
+        Validate a single rule basis citation.
+
+        A valid citation must have:
+        - source: Authority source (e.g., "XBRL Specification 2.1")
+        - retrieved_at: ISO 8601 timestamp
+        - sha256: Content integrity hash
+        - url or title: Reference location
+
+        Args:
+            citation: Citation dictionary to validate
+
+        Returns:
+            True if citation meets Gate requirements
+        """
+        try:
+            # Required fields for Gate compliance
+            required_fields = ['source', 'retrieved_at', 'sha256']
+
+            # Check required fields exist and are non-empty
+            for field in required_fields:
+                if field not in citation or not citation[field]:
+                    self.logger.debug(f"Citation missing required field: {field}")
+                    return False
+
+            # Check that at least url or title is present
+            if not citation.get('url') and not citation.get('title'):
+                self.logger.debug("Citation missing both url and title")
+                return False
+
+            # Validate sha256 format (64 hex characters)
+            sha256 = citation['sha256']
+            if len(sha256) != 64 or not all(c in '0123456789abcdefABCDEF' for c in sha256):
+                self.logger.debug(f"Invalid sha256 format: {sha256}")
+                return False
+
+            # Basic retrieved_at format check (should be ISO 8601)
+            retrieved_at = citation['retrieved_at']
+            if 'T' not in retrieved_at or 'Z' not in retrieved_at:
+                self.logger.debug(f"Invalid retrieved_at format: {retrieved_at}")
+                return False
+
+            return True
+
+        except Exception as e:
+            self.logger.debug(f"Error validating citation: {e}")
+            return False
 
     def auto_discover(self, package_path: str = "cmdrvl_xew.detectors") -> None:
         """

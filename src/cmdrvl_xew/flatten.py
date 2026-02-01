@@ -21,22 +21,27 @@ import argparse
 import re
 import shutil
 from pathlib import Path
+from urllib.parse import urlparse
 
 # Namespaces for XBRL/iXBRL parsing
 _XLINK_NS = "http://www.w3.org/1999/xlink"
 _LINK_NS = "http://www.xbrl.org/2003/linkbase"
 
 # EDGAR exhibit type directories and their typical file extensions
-_EDGAR_EXHIBIT_DIRS = {
-    "EX-101.SCH": ".xsd",
-    "EX-101.CAL": "_cal.xml",
-    "EX-101.DEF": "_def.xml",
-    "EX-101.LAB": "_lab.xml",
-    "EX-101.PRE": "_pre.xml",
-}
+_EDGAR_EXHIBIT_DIRS: tuple[tuple[str, str], ...] = (
+    ("EX-101.SCH", ".xsd"),
+    ("EX-101.CAL", "_cal.xml"),
+    ("EX-101.DEF", "_def.xml"),
+    ("EX-101.LAB", "_lab.xml"),
+    ("EX-101.PRE", "_pre.xml"),
+)
 
 # Form type directories (where the primary iXBRL lives)
-_FORM_DIRS = {"10-Q", "10-K", "10-K/A", "10-Q/A", "20-F", "6-K", "8-K", "8-K/A"}
+_FORM_DIRS: tuple[str, ...] = ("10-K", "10-K/A", "10-Q", "10-Q/A", "20-F", "6-K", "8-K", "8-K/A")
+
+
+def _sorted_dir_entries(path: Path) -> list[Path]:
+    return sorted(path.iterdir(), key=lambda p: p.name)
 
 
 def _find_primary_ixbrl(edgar_dir: Path) -> Path | None:
@@ -48,7 +53,7 @@ def _find_primary_ixbrl(edgar_dir: Path) -> Path | None:
     for form_dir in _FORM_DIRS:
         form_path = edgar_dir / form_dir
         if form_path.is_dir():
-            for f in form_path.iterdir():
+            for f in _sorted_dir_entries(form_path):
                 if f.is_file() and f.suffix.lower() in (".htm", ".html"):
                     # Skip exhibit files (e.g., ex31-1.htm)
                     if not f.name.lower().startswith("ex"):
@@ -84,6 +89,12 @@ def _extract_schema_ref(ixbrl_path: Path) -> str | None:
     return None
 
 
+def _schema_basename(schema_ref: str) -> str:
+    parsed = urlparse(schema_ref)
+    path = parsed.path if parsed.scheme or parsed.netloc else schema_ref
+    return Path(path).stem
+
+
 def _find_extension_files(edgar_dir: Path, schema_basename: str) -> dict[str, Path]:
     """Find extension schema and linkbase files in EDGAR exhibit directories.
 
@@ -97,13 +108,13 @@ def _find_extension_files(edgar_dir: Path, schema_basename: str) -> dict[str, Pa
     """
     found: dict[str, Path] = {}
 
-    for exhibit_dir, suffix in _EDGAR_EXHIBIT_DIRS.items():
+    for exhibit_dir, suffix in _EDGAR_EXHIBIT_DIRS:
         exhibit_path = edgar_dir / exhibit_dir
         if not exhibit_path.is_dir():
             continue
 
         # Look for files matching the schema basename
-        for f in exhibit_path.iterdir():
+        for f in _sorted_dir_entries(exhibit_path):
             if not f.is_file():
                 continue
             # Match by basename pattern (schema_basename + expected suffix)
@@ -126,12 +137,12 @@ def _find_all_extension_files_by_scan(edgar_dir: Path) -> dict[str, Path]:
     """
     found: dict[str, Path] = {}
 
-    for exhibit_dir in _EDGAR_EXHIBIT_DIRS:
+    for exhibit_dir, _suffix in _EDGAR_EXHIBIT_DIRS:
         exhibit_path = edgar_dir / exhibit_dir
         if not exhibit_path.is_dir():
             continue
 
-        for f in exhibit_path.iterdir():
+        for f in _sorted_dir_entries(exhibit_path):
             if f.is_file() and f.suffix.lower() in (".xsd", ".xml"):
                 found[f.name] = f
 
@@ -164,8 +175,8 @@ def run_flatten(args: argparse.Namespace) -> int:
     # Step 2: Extract schemaRef to determine extension basename
     schema_ref = _extract_schema_ref(primary)
     if schema_ref:
-        # Strip path and extension to get basename (e.g., "frt-20250930")
-        schema_basename = Path(schema_ref).stem
+        # Strip path/query/fragment to get basename (e.g., "frt-20250930")
+        schema_basename = _schema_basename(schema_ref)
         print(f"Schema reference: {schema_ref} (basename: {schema_basename})")
         extension_files = _find_extension_files(edgar_dir, schema_basename)
     else:
@@ -177,13 +188,14 @@ def run_flatten(args: argparse.Namespace) -> int:
 
     # Copy primary iXBRL
     primary_dst = out_dir / primary.name
-    shutil.copyfile(primary, primary_dst)
+    shutil.copy2(primary, primary_dst)
     copied.append(primary.name)
 
     # Copy extension files
-    for filename, src_path in extension_files.items():
+    for filename in sorted(extension_files):
+        src_path = extension_files[filename]
         dst_path = out_dir / filename
-        shutil.copyfile(src_path, dst_path)
+        shutil.copy2(src_path, dst_path)
         copied.append(filename)
 
     print(f"Copied {len(copied)} files to {out_dir}:")

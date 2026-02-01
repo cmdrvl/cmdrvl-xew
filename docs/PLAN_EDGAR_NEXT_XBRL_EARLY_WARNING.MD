@@ -40,6 +40,15 @@ The issuer's most recent filing of the same base form type (10-Q compares to the
 If an amendment/restatement exists for the prior comparable period, use the latest filed version (the /A) as the comparator and record the choice in the Evidence Pack.
 If no prior comparable filing exists (e.g., new registrant, or first filing of a form type), comparator-based checks are skipped and alerts must be supported by within-filing evidence alone.
 
+Form-specific comparator policy (v1):
+- 10-Q, 10-K, 20-F: compare to the prior filing of the same base form (latest /A if present).
+- 6-K, 8-K: no comparator by default; only compare if an explicit comparator is provided.
+
+Comparator notes for additional forms (draft; lock before enabling):
+- Base form type is the form with any "/A" stripped.
+- 20-F compares to the prior 20-F (or 20-F/A if it amends the prior period).
+- 6-K and 8-K are non-periodic; comparator-based checks are disabled by default. If enabled, select the most recent same base form within a configurable lookback window, and record the policy (window + selection rule) in the Evidence Pack.
+
 ### "Next filing cycle" (in this plan)
 The issuer's next submission of the same form type (next 10-Q or next 10-K). CMD+RVL analyzes each filed artifact as soon as it is available; the "next cycle" language describes when the flagged fragility could materialize as a problem, not when analysis occurs. Note: fragility patterns detected in a 10-Q may also be relevant to the upcoming 10-K if similar structures are reused, but v1 comparisons are same-form-type only.
 
@@ -248,6 +257,11 @@ Note (v1): "v1 status: ship" means "in the target v1 shipping set; it ships only
 - Why fragile: dimensional inconsistency is a known error class and can be "quiet" until the disclosure structure shifts.
 - Break trigger examples: segment changes; adding/removing members; roll-forward edits; validator/enforcement tightening around dimensional validity.
 - Evidence must include: the concept QName; the dimension-member set(s) observed; and representative fact/context examples showing the inconsistency.
+- Research notes (non-shipping; objective signals to explore):
+  - Same concept QName appears with and without any dimensions within the same period type and same presentation role (record role URI + counts).
+  - Same concept QName appears with multiple distinct dimension-member sets in contexts that share entity + period (record distinct dim-sig count).
+  - Same concept QName appears across multiple hypercubes where the primary item set is identical but dimensional coverage differs (record hypercube/role IDs).
+  - Candidate metrics to capture for review: number of distinct dim-sigs per concept, ratio of dimensional vs non-dimensional instances, number of roles/hypercubes involved.
 
 ### XEW-P004: Invalid or Discouraged Data-Type / Unit / Numeric Attributes
 - v1 status: ship (objective checks; rule basis required).
@@ -270,6 +284,11 @@ Note (v1): "v1 status: ship" means "in the target v1 shipping set; it ships only
 - Why fragile: semantic ambiguity is often tolerated until disclosure structure changes, at which point conflicts can surface interpretability issues and downstream tooling disagreements.
 - Break trigger examples: segment changes; roll-forward edits; adding new members; enforcement tightening around dimensional validity.
 - Evidence must include: the member QName; examples of where it is used (concepts/roles/contexts); and the specific ambiguity claim (what meaning conflict exists).
+- Research notes (non-shipping; objective signals to explore):
+  - Same member QName appears under multiple distinct domain parents in the definition linkbase (record the parent domains).
+  - Same member QName appears across multiple presentation roles / hypercubes with materially different primary item sets (record role URIs + counts).
+  - Same member QName used with divergent context dimension sets (record distinct dimension-member sets and counts).
+  - Candidate metrics to capture for review: number of distinct roles, number of distinct primary items, number of distinct context dimension sets.
 
 ### XEW-P007: Duplicate-by-Substance Contexts
 - v1 status: roadmap (log as an internal observation; do not auto-alert due to high noise risk and unclear reject mechanism).
@@ -277,6 +296,10 @@ Note (v1): "v1 status: ship" means "in the target v1 shipping set; it ships only
 - Why fragile: duplicate-by-substance contexts increase collision risk (e.g., they can lead to duplicate facts in `XEW-P001` as disclosures evolve), and make the tagging model more brittle under future changes.
 - Break trigger examples: adding new facts; roll-forward edits; dimensional expansion; validator/enforcement tightening.
 - Evidence must include: the context IDs involved; their entity identifier (scheme + value); their periods; their dimension-member sets; and a reproducible extraction demonstrating identical signatures.
+- Research notes (non-shipping; objective signals to explore):
+  - Multiple contexts share identical entity + period + dimension-member signatures but have disjoint fact sets (record context IDs + fact counts).
+  - Duplicate-by-substance contexts appear across multiple presentation roles for the same primary items (record role URIs + counts).
+  - Candidate metrics to capture for review: number of duplicate context groups, max contexts per group, total facts per group.
 
 ### Break Trigger Catalog (Annotations, Not Alerts)
 Break triggers are recorded on alerts as explicit "what could surface this" annotations. A break trigger is never an alert by itself.
@@ -384,6 +407,13 @@ These are implementable, but must be pinned to avoid silent drift and false clai
   - Deterministic ordering + caps for instance lists (to make truncation reproducible)
 - Taxonomy resolution policy (offline/online, taxonomy packages used, and what is pinned into the Evidence Pack vs referenced).
 - EDGAR-driven fetch policy (when used): deterministic artifact selection + rate limiting + SEC user-agent compliance.
+
+EDGAR-driven fetch policy (draft requirements):
+- User-Agent must be configurable and include contact information (company + email) and tool version.
+- Rate limiting must be configurable (max requests/sec and/or concurrency) and honor SEC guidance at time of implementation.
+- Respect server signals: handle 429/503 with exponential backoff and honor Retry-After when present.
+- Cache responses to minimize requests and record retrieval metadata (URL, retrieved_at, status, sha256) in the Evidence Pack.
+- Do not enable EDGAR fetch mode without this policy implemented and documented.
 
 ---
 
@@ -611,6 +641,13 @@ Longer term:
 - Severity tiers and optional scoring (only after precision is proven)
 - Formal Outcome SKUs (by issuer count, forms covered, SLA)
 - Expansion beyond XBRL into other EDGAR Next enforcement surfaces
+
+## Future Work Gating Criteria (CLI Roadmap)
+Future items are not eligible for v1 unless they meet explicit gates:
+- EDGAR-driven fetch mode: SEC-compliant User-Agent + rate limiting, deterministic artifact selection, and recorded retrieval metadata.
+- Severity tiers (v2 schema): versioned schema update plan, no v1 output changes, and a migration note in the contract.
+- Expanded form coverage (20-F/6-K/8-K): ingestion rules + comparator policy per form, plus golden Evidence Pack fixtures.
+- Roadmap patterns (P003/P006/P007): canonical signature definitions, noise evaluation plan, and log-only behavior before alerting.
 
 ---
 

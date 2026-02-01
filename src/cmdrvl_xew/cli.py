@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+from .fetch import run_fetch
 from .flatten import run_flatten
 from .pack import run_pack
 from .verify import run_verify_pack
@@ -61,6 +62,14 @@ def main(argv: list[str] | None = None) -> int:
     verify.add_argument("--pack", required=True, help="Evidence Pack directory")
     verify.add_argument("--validate-schema", action="store_true", help="Validate xew_findings.json if jsonschema is installed")
 
+    fetch = sub.add_parser("fetch", help="Download EDGAR accession artifacts into a flat directory")
+    fetch.add_argument("--cik", required=True)
+    fetch.add_argument("--accession", required=True)
+    fetch.add_argument("--out", required=True, help="Output directory for downloaded artifacts")
+    fetch.add_argument("--user-agent", required=True, help="SEC-compliant User-Agent string")
+    fetch.add_argument("--min-interval", type=float, default=0.2, help="Minimum seconds between requests (default: 0.2)")
+    fetch.add_argument("--force", action="store_true", help="Overwrite existing files in output directory")
+
     args = p.parse_args(argv)
 
     if args.cmd == "flatten":
@@ -70,6 +79,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_pack(args)
     if args.cmd == "verify-pack":
         return run_verify_pack(args)
+    if args.cmd == "fetch":
+        return run_fetch(args)
 
     p.error(f"unknown command: {args.cmd}")
     return 2

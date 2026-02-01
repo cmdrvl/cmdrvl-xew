@@ -86,7 +86,14 @@ def _validate_findings_schema(pack_dir: Path) -> bool:
             encoding="utf-8"
         )
         schema = json.loads(schema_text)
-        jsonschema.validate(instance=findings, schema=schema)
+        try:
+            format_checker = jsonschema.FormatChecker()
+        except AttributeError:
+            format_checker = None
+        if format_checker is None:
+            jsonschema.validate(instance=findings, schema=schema)
+        else:
+            jsonschema.validate(instance=findings, schema=schema, format_checker=format_checker)
         return True
     except ModuleNotFoundError:
         print("jsonschema not installed; skipping schema validation")

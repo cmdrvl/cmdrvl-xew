@@ -35,6 +35,7 @@ XEW is NOT:
 
 - Schema: `src/cmdrvl_xew/schemas/xew_findings.schema.v1.json`
 - Example: `docs/examples/xew_findings.example.v1.json`
+- V2 schema (future): `src/cmdrvl_xew/schemas/xew_findings.schema.v2.json` adds optional `severity_tier`.
 
 ### Evidence Pack
 An Evidence Pack is a directory that contains:
@@ -50,6 +51,8 @@ Contract: `docs/XEW_EVIDENCE_PACK_CONTRACT_V1.MD`
 
 The CLI is named `cmdrvl-xew`.
 
+Supported EDGAR form directories for `flatten` include 10-Q, 10-K, 8-K, 20-F, 6-K, and amendments (e.g., 10-Q/A).
+
 ### Install (dev)
 
 ```bash
@@ -64,6 +67,46 @@ Optional schema validation during pack verification:
 pip install -e '.[jsonschema]'
 ```
 
+### Flatten EDGAR Directories (artifact prep)
+
+`flatten` normalizes EDGAR’s typed directory structure into a flat layout that Arelle can load.
+
+```bash
+cmdrvl-xew flatten sample/0000034903-25-000063 --out /tmp/flat
+
+# Overwrite existing output directory contents if needed
+cmdrvl-xew flatten sample/0000034903-25-000063 --out /tmp/flat --force
+```
+
+Notes:
+- The output directory must be empty unless `--force` is used.
+- The flat output directory is the input for `pack`.
+
+Flatten flags:
+- Required: `edgar_dir` (positional), `--out`
+- Optional: `--force`
+
+### Fetch EDGAR Accession Artifacts (experimental)
+
+`fetch` downloads an accession’s primary HTML and referenced schema/linkbase files into a flat directory.
+
+```bash
+cmdrvl-xew fetch \
+  --cik 0000123456 \
+  --accession 0000123456-26-000005 \
+  --out /tmp/flat \
+  --user-agent "Example Name example@example.com"
+```
+
+Notes:
+- `--user-agent` is required to comply with SEC access policies.
+- The output directory must be empty unless `--force` is used.
+- This is an EDGAR-driven convenience mode; artifact-driven `pack` remains the default.
+
+Fetch flags:
+- Required: `--cik`, `--accession`, `--out`, `--user-agent`
+- Optional: `--min-interval`, `--force`
+
 ### Generate a Pack (artifact-driven)
 
 Artifact-driven mode is the default posture (recommended for production systems that already stage filing artifacts in object storage).
@@ -72,7 +115,7 @@ Artifact-driven mode is the default posture (recommended for production systems 
 cmdrvl-xew pack \
   --pack-id XEW-EP-0007 \
   --out ./XEW-EP-0007 \
-  --primary ./primary-document.html \
+  --primary /tmp/flat/primary-document.html \
   --cik 0000123456 \
   --accession 0000123456-26-000005 \
   --form 10-Q \
@@ -82,7 +125,13 @@ cmdrvl-xew pack \
 
 Notes:
 - The output directory must not exist (or must be empty).
-- In the current skeleton, `pack` copies the primary HTML into `artifacts/primary.html` and emits an empty `findings` list.
+- `pack` copies the primary HTML to `artifacts/primary.html` and includes any referenced schema/linkbase artifacts located in the same flat directory.
+- Findings are currently empty until detectors are implemented.
+
+Pack flags:
+- Required: `--pack-id`, `--out`, `--primary`, `--cik`, `--accession`, `--form`, `--filed-date`, `--primary-document-url`
+- Optional: `--issuer-name`, `--period-end`, `--retrieved-at`, `--arelle-version`, `--resolution-mode`
+- Comparator (optional, all-or-nothing): `--comparator-accession`, `--comparator-primary-document-url`, `--comparator-primary-artifact-path`
 
 ### Verify a Pack
 
@@ -92,6 +141,10 @@ cmdrvl-xew verify-pack --pack ./XEW-EP-0007
 # With optional schema validation
 cmdrvl-xew verify-pack --pack ./XEW-EP-0007 --validate-schema
 ```
+
+Verify flags:
+- Required: `--pack`
+- Optional: `--validate-schema` (requires `jsonschema` extra)
 
 ## Sample Filings (Local Only)
 

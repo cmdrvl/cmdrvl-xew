@@ -42,11 +42,13 @@ Notes:
 
 ## Required Files
 ### 1) `xew_findings.json`
-- Must validate against `edgar_outcomes/xew_findings.schema.v1.json`.
+- Must validate against `src/cmdrvl_xew/schemas/xew_findings.schema.v1.json`.
 - Must include enough evidence to reproduce each triggered pattern.
+- Future schema versions (v2+) may add optional fields (e.g., severity tiers), but v1 packs must validate against the v1 schema.
 
 ### 2) `pack_manifest.json`
-This is the authoritative inventory of everything in the Evidence Pack.
+This is the authoritative inventory of reproducibility-relevant files in the Evidence Pack.
+The manifest file itself is not required to appear in `files[]` (if it does, it must be excluded from `pack_sha256`).
 
 Required fields:
 - `pack_id`: unique string (format is internal; must be stable once issued)
@@ -55,20 +57,23 @@ Required fields:
   - `path`: pack-relative path (e.g., `artifacts/primary.html`)
   - `sha256`: lowercase hex sha256 of raw file bytes
   - `bytes`: integer size in bytes
-  - `role`: one of: `xew_output`, `manifest`, `edgar_artifact`, `taxonomy_input`, `toolchain`
+  - `role`: one of: `xew_output`, `edgar_artifact`, `taxonomy_input`, `toolchain`, `manifest` (if listed)
   - `source_url`: required for `edgar_artifact` and other fetched inputs
 
 ### 3) `toolchain/toolchain.json`
-Minimum fields:
+Minimum fields (v1):
 - `cmdrvl_xew_version`: git SHA or semver
 - `arelle_version`: version string
-- `arelle_sec_plugin_version`: version string or git SHA (if used)
-- `taxonomy_inputs`: list of any taxonomy packages/files used to resolve/validate (each with `source_url` or identifier + `sha256`)
 - `config`: key settings that affect reproducibility (e.g., offline/online resolution mode, cache policy)
+
+Recommended fields (when applicable):
+- `arelle_sec_plugin_version`: version string or git SHA
+- `dqcrt_version`: version string or git SHA
+- `taxonomy_inputs`: list of any taxonomy packages/files used to resolve/validate (each with `source_url` or identifier + `sha256`)
 
 ## Hashing Rules (tamper-evident)
 ### Per-file hashes
-For each non-manifest file in the Evidence Pack directory (everything except `pack_manifest.json`), compute:
+For each file listed in `files[]`, compute:
 - `sha256(file_bytes)`
 
 Store each file hash in `pack_manifest.json`.
@@ -79,7 +84,7 @@ Compute `pack_sha256` deterministically from the manifest entries (not from the 
 Algorithm (v1):
 1. Build the list of manifest entries as strings:
    - `"<path>\\t<sha256>\\n"`
-   - Exclude the `pack_manifest.json` entry from this list to avoid self-referential hashing.
+   - If `pack_manifest.json` is listed in `files[]`, exclude it to avoid self-referential hashing.
 2. Sort entries by `path` ascending (byte-order).
 3. Concatenate into a single UTF-8 byte stream.
 4. Compute `sha256(concatenated_bytes)` and record as `pack_sha256` in `pack_manifest.json`.
@@ -99,27 +104,60 @@ Each finding includes one or more pattern instances.
 Instance IDs are deterministic sha256s of a canonical signature string.
 
 Canonical signature rules (v1; ASCII only; use Clark notation for QNames):
+- Prefix every signature with the literal version tag `v1`:
+  - `sig = "v1|<pattern-specific-fields>"`
+- If the signature format changes, bump the version tag (e.g., `v2|...`) and the contract/schema version.
 - `XEW-P001` (duplicate facts):
-  - `sig = "P001|<concept_clark>|<entity_scheme>|<entity_identifier>|<period_sig>|<dim_sig>|<unit_id_or_empty>"`
+  - `sig = "v1|P001|<concept_clark>|<entity_scheme>|<entity_identifier>|<period_sig>|<dim_sig>|<unit_id_or_empty>"`
 - `XEW-P002` (extension concept):
-  - `sig = "P002|<extension_concept_clark>|<sorted_issue_codes_csv>"`
+  - `sig = "v1|P002|<extension_concept_clark>|<sorted_issue_codes_csv>"`
 - `XEW-P004` (numeric/type/unit/attribute issue):
-  - `sig = "P004|<concept_clark>|<context_id>|<unit_id_or_empty>|<issue_code>"`
+  - `sig = "v1|P004|<concept_clark>|<context_id>|<unit_id_or_empty>|<issue_code>"`
 - `XEW-P005` (taxonomy references):
-  - `sig = "P005|<issue_code>|schemaRefSha256=<sha256(schemaRef_hrefs_joined_by_newline)>|nsSha256=<sha256(namespaces_joined_by_newline)>"`
+  - `sig = "v1|P005|<issue_code>|schemaRefSha256=<sha256(schemaRef_hrefs_joined_by_newline)>|nsSha256=<sha256(namespaces_joined_by_newline)>"`
 - `XEW-P007` (duplicate-by-substance context; roadmap/non-alert in v1):
-  - `sig = "P007|<entity_scheme>|<entity_identifier>|<period_sig>|<dim_sig>"`
+  - `sig = "v1|P007|<entity_scheme>|<entity_identifier>|<period_sig>|<dim_sig>"`
 
 Where:
 - `sha256(x)`: sha256 over UTF-8 bytes of `x` with no trailing newline, returned as lowercase hex.
 - `<sorted_issue_codes_csv>`: objective issue codes sorted ascending and joined by `,` (no trailing comma).
 - `<period_sig>`: `instant:YYYY-MM-DD` or `duration:YYYY-MM-DD..YYYY-MM-DD`.
 - `<dim_sig>`: dimension-member set for the context, sorted by dimension Clark string and encoded as `<dim_clark>=<member_clark|typed:sha256(typed_value)>`, joined by `;` (empty string when no dimensions).
+- `<unit_id_or_empty>`: normalized unit signature or empty string for non-numeric facts (see Unit Equivalence Policy below).
 - `schemaRef_hrefs_joined_by_newline`: sorted schemaRef hrefs joined by `\n` (no trailing newline).
 - `namespaces_joined_by_newline`: sorted namespaces joined by `\n` (no trailing newline).
 
 Then:
 - `instance_id = sha256(sig)` (lowercase hex)
+
+## Unit Equivalence Policy (v1)
+
+For XBRL units referenced in canonical signatures and duplicate detection:
+
+### Unit Normalization
+- **Non-numeric facts**: Use empty string in signatures (`<unit_id_or_empty>` = "")
+- **Numeric facts**: Normalize unit to measures in sorted Clark notation
+- **Multi-measure units** (e.g., ratios): Join measures with `;` (e.g., `"{http://iso4217}USD;{http://xbrldt}shares"`)
+- **Single measure**: Use Clark notation directly (e.g., `"{http://iso4217}USD"`)
+
+### Unit Equivalence Rules
+Two units are equivalent if:
+1. Both are non-numeric (no unit), OR
+2. Both have identical normalized measures (same Clark notations, ignoring original order)
+
+### Policy Selection (v1)
+- **Semantic equivalence**: Compare normalized measures when available (preferred for duplicate detection)
+- **Reference equivalence**: Fall back to unitRef comparison when measures unavailable (signatures only)
+
+### Examples
+```
+Non-numeric fact:     unit_signature = ""
+USD currency:         unit_signature = "{http://www.xbrl.org/2003/iso4217}USD"
+Shares count:         unit_signature = "{http://www.xbrl.org/2005/xbrldt}shares"
+USD per share ratio:  unit_signature = "{http://www.xbrl.org/2003/iso4217}USD;{http://www.xbrl.org/2005/xbrldt}shares"
+```
+
+Note: Units with different measure order but identical content are equivalent (`USD;shares` == `shares;USD`), but the canonical signature always uses sorted order for determinism.
 
 ## Determinism Requirements (v1)
 To avoid "it worked on my machine" evidence packs:

@@ -67,5 +67,5 @@ def _auto_discover_detectors():
         # Don't fail package import if auto-discovery fails
         logger.warning(f"Detector auto-discovery failed: {e}")
 
-# Uncomment when detector modules are available
-# _auto_discover_detectors()
+# Auto-discover detector modules
+_auto_discover_detectors()
