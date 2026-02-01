@@ -1,7 +1,7 @@
 """Detector registry for XEW pattern detection."""
 
 import logging
-from typing import Dict, List, Type, Set, Any
+from typing import Dict, List, Type, Set, Any, Optional, Union, Tuple
 from pathlib import Path
 import importlib
 import json
@@ -9,6 +9,16 @@ import json
 from ._base import BaseDetector, DetectorContext, DetectorFinding, DetectorError
 
 logger = logging.getLogger(__name__)
+
+
+# Pattern priority order for v1 shipping set (highest to lowest)
+# When multiple patterns are detected, select highest priority for external alerts
+PATTERN_PRIORITIES = {
+    "XEW-P001": 1,  # Duplicate facts - highest priority (data integrity)
+    "XEW-P004": 2,  # Type/unit/numeric violations - high priority (validation critical)
+    "XEW-P005": 3,  # Taxonomy inconsistencies - medium priority (structural)
+    "XEW-P002": 4,  # Anchoring defects - lower priority (taxonomy quality)
+}
 
 
 class DetectorRegistry:
@@ -177,6 +187,108 @@ class DetectorRegistry:
         self.logger.info(f"All detectors completed, {len(findings)} total findings")
         return findings
 
+    def select_highest_priority_finding(self, findings: List[DetectorFinding]) -> Optional[DetectorFinding]:
+        """
+        Select the highest priority finding for external alerts.
+
+        When multiple patterns are detected, v1 Evidence Pack engine sends at most
+        one external alert per filing by default. This method implements deterministic
+        selection based on pattern priority order.
+
+        Args:
+            findings: List of all detected findings
+
+        Returns:
+            Single highest-priority finding for external alert, or None if no eligible findings
+        """
+        if not findings:
+            return None
+
+        # Filter to alert-eligible findings only
+        alert_eligible_findings = [f for f in findings if f.alert_eligible]
+
+        if not alert_eligible_findings:
+            self.logger.info("No alert-eligible findings for priority selection")
+            return None
+
+        self.logger.debug(f"Selecting priority from {len(alert_eligible_findings)} alert-eligible findings")
+
+        # Sort by pattern priority (lower number = higher priority)
+        def get_priority(finding: DetectorFinding) -> int:
+            return PATTERN_PRIORITIES.get(finding.pattern_id, 999)  # 999 for unknown patterns
+
+        prioritized_findings = sorted(alert_eligible_findings, key=get_priority)
+        selected_finding = prioritized_findings[0]
+
+        self.logger.info(f"Selected highest priority finding: {selected_finding.pattern_id} "
+                        f"(priority {get_priority(selected_finding)}) from {len(findings)} total findings")
+
+        return selected_finding
+
+    def get_pattern_priority(self, pattern_id: str) -> int:
+        """
+        Get priority level for a pattern ID.
+
+        Args:
+            pattern_id: Pattern ID (e.g., 'XEW-P001')
+
+        Returns:
+            Priority level (lower number = higher priority)
+        """
+        return PATTERN_PRIORITIES.get(pattern_id, 999)
+
+    def run_detectors_with_priority_selection(self, context: DetectorContext,
+                                            patterns: Set[str] = None) -> Tuple[List[DetectorFinding], Optional[DetectorFinding]]:
+        """
+        Run detectors and return both all findings and the highest-priority finding.
+
+        This is the main detection orchestration method that:
+        1. Runs all specified detectors
+        2. Records all findings internally
+        3. Selects the highest-priority finding for external alerts
+
+        Args:
+            context: Detection context with XBRL model and metadata
+            patterns: Optional set of pattern IDs to run (default: all registered)
+
+        Returns:
+            Tuple of (all_findings, highest_priority_finding)
+            - all_findings: Complete list of findings for internal recording
+            - highest_priority_finding: Single finding for external alert (or None)
+        """
+        # Run all detectors to get complete findings
+        all_findings = self.run_detectors(context, patterns)
+
+        # Select highest priority finding for external alert
+        priority_finding = self.select_highest_priority_finding(all_findings)
+
+        if priority_finding:
+            self.logger.info(f"Priority selection: {priority_finding.pattern_id} selected "
+                           f"from {len(all_findings)} total findings for external alert")
+        else:
+            self.logger.info(f"Priority selection: No alert-eligible findings from "
+                           f"{len(all_findings)} total findings")
+
+        return all_findings, priority_finding
+
+    def list_patterns_by_priority(self) -> List[str]:
+        """
+        Return registered pattern IDs ordered by priority (highest to lowest).
+
+        Returns:
+            List of pattern IDs sorted by priority level
+        """
+        registered_patterns = self.list_patterns()
+
+        # Sort by priority level
+        def get_priority(pattern_id: str) -> int:
+            return PATTERN_PRIORITIES.get(pattern_id, 999)
+
+        prioritized_patterns = sorted(registered_patterns, key=get_priority)
+
+        self.logger.debug(f"Patterns by priority: {prioritized_patterns}")
+        return prioritized_patterns
+
     def select_break_trigger(self, pattern_id: str) -> Dict[str, str]:
         """
         Select the most specific break trigger for a pattern.
@@ -217,13 +329,13 @@ class DetectorRegistry:
 
     def apply_gate_enforcement(self, finding: DetectorFinding, pattern_id: str) -> DetectorFinding:
         """
-        Apply Gate enforcement: demote findings without valid rule basis.
+        Apply Gate enforcement: suppress findings without valid rule basis.
 
         The Gate requires that every finding shipped as an alert must have:
         1. At least one pinned rule basis citation
         2. Valid retrieved_at and sha256 for reproducibility
 
-        If these requirements are not met, the finding is demoted to non-alert status
+        If these requirements are not met, the finding is suppressed (status="suppressed")
         but preserved for analysis and debugging.
 
         Args:
@@ -238,13 +350,12 @@ class DetectorRegistry:
             if not self._has_valid_rule_basis(finding, pattern_id):
                 self.logger.warning(f"Gate enforcement: demoting {pattern_id} finding due to missing/invalid rule basis")
 
-                # Demote to non-alert status
+                # Suppress to satisfy schema (status enum: detected|suppressed)
                 finding.alert_eligible = False
-                finding.status = "suppressed_by_gate"
+                finding.status = "suppressed"
 
-                # Add gate suppression reason to finding
-                if not hasattr(finding, 'gate_suppression_reason'):
-                    finding.gate_suppression_reason = "Missing or invalid rule basis citation"
+                # Record suppression reason
+                finding.suppression_reason = "Missing or invalid rule basis citation"
 
                 # Ensure human review is required for demoted findings
                 finding.human_review_required = True
@@ -259,8 +370,8 @@ class DetectorRegistry:
             self.logger.error(f"Error during Gate enforcement for {pattern_id}: {e}")
             # In case of error, demote for safety
             finding.alert_eligible = False
-            finding.status = "suppressed_by_gate"
-            finding.gate_suppression_reason = f"Gate enforcement error: {e}"
+            finding.status = "suppressed"
+            finding.suppression_reason = f"Gate enforcement error: {e}"
             return finding
 
     def _has_valid_rule_basis(self, finding: DetectorFinding, pattern_id: str) -> bool:
@@ -405,3 +516,11 @@ def register_detector(detector_class: Type[BaseDetector]) -> None:
 def run_detectors(context: DetectorContext, patterns: Set[str] = None) -> List[DetectorFinding]:
     """Run detectors using the global registry."""
     return _registry.run_detectors(context, patterns)
+
+def run_detectors_with_priority_selection(context: DetectorContext, patterns: Set[str] = None) -> Tuple[List[DetectorFinding], Optional[DetectorFinding]]:
+    """Run detectors with priority selection using the global registry."""
+    return _registry.run_detectors_with_priority_selection(context, patterns)
+
+def select_highest_priority_finding(findings: List[DetectorFinding]) -> Optional[DetectorFinding]:
+    """Select highest priority finding using the global registry."""
+    return _registry.select_highest_priority_finding(findings)
