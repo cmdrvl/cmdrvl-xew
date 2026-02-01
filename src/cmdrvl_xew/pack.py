@@ -5,6 +5,7 @@ import hashlib
 import mimetypes
 import re
 import shutil
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
@@ -15,6 +16,7 @@ from .taxonomy import NonRedistributableReference, non_redistributable_reference
 from .util import FileHash, sha256_file, utc_now_iso, write_json
 
 _ACCESSION_RE = re.compile(r"^\d{10}-\d{2}-\d{6}$")
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def _compute_pack_sha256(files: list[FileHash]) -> str:
@@ -42,7 +44,134 @@ def _normalize_accession(accession: str) -> str:
     return s
 
 
+def _validate_form_type(form: str) -> str:
+    """Validate form type and normalize to standard format."""
+    form_normalized = form.strip().upper()
+    valid_forms = {'10-K', '10-Q', '8-K', '20-F', '10-K/A', '10-Q/A', '8-K/A', '20-F/A'}
+
+    if form_normalized not in valid_forms:
+        raise ValueError(f"Unsupported form type: {form}. Supported forms: {', '.join(sorted(valid_forms))}")
+
+    return form_normalized
+
+
+def _validate_date_format(date_str: str, field_name: str) -> str:
+    """Validate date format (YYYY-MM-DD) and check for reasonable values."""
+    date_cleaned = date_str.strip()
+
+    if not _DATE_RE.match(date_cleaned):
+        raise ValueError(f"{field_name} must be in YYYY-MM-DD format, got: {date_str}")
+
+    # Additional validation: try to parse the date to ensure it's valid
+    try:
+        parsed_date = datetime.strptime(date_cleaned, "%Y-%m-%d")
+
+        # Basic sanity check: filing dates should be reasonably recent
+        if field_name == "filed-date":
+            current_year = datetime.now().year
+            if parsed_date.year < 1990 or parsed_date.year > current_year + 1:
+                raise ValueError(f"{field_name} year {parsed_date.year} is outside reasonable range (1990-{current_year + 1})")
+
+    except ValueError as e:
+        if "does not match format" in str(e):
+            raise ValueError(f"{field_name} is not a valid date: {date_str}")
+        else:
+            raise  # Re-raise our custom error messages
+
+    return date_cleaned
+
+
+def _validate_pack_args(args: argparse.Namespace) -> None:
+    """Validate all required pack command arguments with clear error messages."""
+    errors = []
+
+    # Check required arguments presence
+    required_args = [
+        ('pack_id', 'pack-id'),
+        ('out', 'out'),
+        ('cik', 'cik'),
+        ('accession', 'accession'),
+        ('form', 'form'),
+        ('filed_date', 'filed-date'),
+        ('primary', 'primary'),
+        ('primary_document_url', 'primary-document-url')
+    ]
+
+    for attr, arg_name in required_args:
+        if not hasattr(args, attr) or getattr(args, attr) is None:
+            errors.append(f"Missing required argument: --{arg_name}")
+
+    # If any required args are missing, exit early with clear message
+    if errors:
+        error_msg = "Pack command validation failed:\n" + "\n".join(f"  • {error}" for error in errors)
+        error_msg += "\n\nRun 'cmdrvl-xew pack --help' for usage information."
+        raise SystemExit(error_msg)
+
+    # Validate and normalize individual arguments
+    validation_errors = []
+
+    # Validate pack-id (basic non-empty check)
+    if not args.pack_id.strip():
+        validation_errors.append("--pack-id cannot be empty")
+
+    # Validate CIK format and normalization
+    try:
+        _normalize_cik(args.cik)
+    except ValueError as e:
+        validation_errors.append(f"--cik: {e}")
+
+    # Validate accession format
+    try:
+        _normalize_accession(args.accession)
+    except ValueError as e:
+        validation_errors.append(f"--accession: {e}")
+
+    # Validate form type
+    try:
+        _validate_form_type(args.form)
+    except ValueError as e:
+        validation_errors.append(f"--form: {e}")
+
+    # Validate filed-date format
+    try:
+        _validate_date_format(args.filed_date, "filed-date")
+    except ValueError as e:
+        validation_errors.append(f"--filed-date: {e}")
+
+    # Validate period-end format if provided
+    if hasattr(args, 'period_end') and args.period_end:
+        try:
+            _validate_date_format(args.period_end, "period-end")
+        except ValueError as e:
+            validation_errors.append(f"--period-end: {e}")
+
+    # Validate primary file exists
+    primary_path = Path(args.primary)
+    if not primary_path.exists():
+        validation_errors.append(f"--primary: File does not exist: {args.primary}")
+    elif not primary_path.is_file():
+        validation_errors.append(f"--primary: Path is not a file: {args.primary}")
+
+    # Validate URL formats (basic check)
+    if args.primary_document_url and not args.primary_document_url.strip():
+        validation_errors.append("--primary-document-url cannot be empty")
+
+    # Output directory validation
+    out_path = Path(args.out)
+    if out_path.exists() and not out_path.is_dir():
+        validation_errors.append(f"--out: Path exists but is not a directory: {args.out}")
+
+    # If any validation errors, exit with comprehensive message
+    if validation_errors:
+        error_msg = "Pack command validation failed:\n" + "\n".join(f"  • {error}" for error in validation_errors)
+        error_msg += "\n\nEnsure all arguments are properly formatted and files exist."
+        raise SystemExit(error_msg)
+
+
 def run_pack(args: argparse.Namespace) -> int:
+    # Validate all required arguments first
+    _validate_pack_args(args)
+
     out_dir = Path(args.out)
     if out_dir.exists():
         if not out_dir.is_dir():
@@ -58,8 +187,11 @@ def run_pack(args: argparse.Namespace) -> int:
     retrieved_at = args.retrieved_at or utc_now_iso()
     generated_at = utc_now_iso()
 
+    # Normalize arguments (validation already done in _validate_pack_args)
     cik = _normalize_cik(args.cik)
     accession = _normalize_accession(args.accession)
+    form = _validate_form_type(args.form)  # Also normalizes to uppercase
+    filed_date = _validate_date_format(args.filed_date, "filed-date")
 
     # Validate comparator policy compliance
     comparator_provided = bool(args.comparator_accession)
