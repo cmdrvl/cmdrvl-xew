@@ -103,9 +103,10 @@ class TestDuplicateFactsDetector(unittest.TestCase):
         instance = finding.instances[0]
 
         # Check instance data
-        self.assertEqual(instance.data['duplicate_count'], 2)
-        self.assertEqual(instance.data['concept_clark'], '{http://fasb.org/us-gaap/2023-01-31}Revenue')
-        self.assertFalse(instance.data['has_value_conflicts'])  # Same values, no conflict
+        self.assertEqual(instance.data['fact_count'], 2)
+        self.assertEqual(instance.data['concept']['clark'], '{http://fasb.org/us-gaap/2023-01-31}Revenue')
+        self.assertFalse(instance.data['value_conflict'])  # Same values, no conflict
+        self.assertIn("duplicate_fact", instance.data['issue_codes'])
 
     def test_duplicate_facts_different_values(self):
         """Test detection of duplicate facts with conflicting values."""
@@ -143,8 +144,9 @@ class TestDuplicateFactsDetector(unittest.TestCase):
         finding = findings[0]
 
         instance = finding.instances[0]
-        self.assertEqual(instance.data['duplicate_count'], 2)
-        self.assertTrue(instance.data['has_value_conflicts'])  # Different values = conflict
+        self.assertEqual(instance.data['fact_count'], 2)
+        self.assertTrue(instance.data['value_conflict'])  # Different values = conflict
+        self.assertIn("value_conflict", instance.data['issue_codes'])
 
     def test_duplicate_facts_different_periods(self):
         """Test that facts with different periods are not considered duplicates."""
@@ -288,7 +290,7 @@ class TestDuplicateFactsDetector(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         finding = findings[0]
         instance = finding.instances[0]
-        self.assertEqual(instance.data['duplicate_count'], 2)
+        self.assertEqual(instance.data['fact_count'], 2)
 
     def test_multiple_duplicate_groups(self):
         """Test detection when there are multiple groups of duplicates."""
@@ -327,8 +329,8 @@ class TestDuplicateFactsDetector(unittest.TestCase):
         # Should have 2 instances (one for each duplicate group)
         self.assertEqual(len(finding.instances), 2)
 
-        duplicate_counts = [inst.data['duplicate_count'] for inst in finding.instances]
-        self.assertEqual(sorted(duplicate_counts), [2, 2])
+        fact_counts = [inst.data['fact_count'] for inst in finding.instances]
+        self.assertEqual(sorted(fact_counts), [2, 2])
 
     def test_non_numeric_facts(self):
         """Test duplicate detection for non-numeric facts."""
@@ -364,7 +366,7 @@ class TestDuplicateFactsDetector(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         finding = findings[0]
         instance = finding.instances[0]
-        self.assertEqual(instance.data['duplicate_count'], 2)
+        self.assertEqual(instance.data['fact_count'], 2)
 
     def test_canonical_signature_consistency(self):
         """Test that canonical signatures are generated consistently."""
@@ -424,8 +426,7 @@ class TestDuplicateFactsDetector(unittest.TestCase):
 
         for rule in rule_basis:
             self.assertIn('source', rule)
-            # P001 uses 'title' instead of 'citation' in its rule basis format
-            self.assertIn('title', rule)
+            self.assertIn('citation', rule)
             self.assertIn('url', rule)
 
     def _create_mock_fact(self, concept: str, context: Mock, value: str,
@@ -493,10 +494,13 @@ class TestDuplicateFactsDetector(unittest.TestCase):
         unit.id = f"unit_{currency_code}"
 
         # Mock unit measures (simplified)
+        measure_qname = Mock()
+        measure_qname.namespaceURI = 'http://www.xbrl.org/2003/iso4217'
+        measure_qname.localName = currency_code
+        measure_qname.prefix = None
         measure = Mock()
-        measure.namespaceURI = 'http://www.xbrl.org/2003/iso4217'
-        measure.localName = currency_code
-        unit.measures = [[measure], []]  # numerator, denominator
+        measure.qname = measure_qname
+        unit.measures = [measure]
 
         return unit
 
