@@ -3,6 +3,7 @@ Unit tests for verify-pack CLI command and verification functionality.
 """
 
 import argparse
+import importlib.util
 import json
 import tempfile
 import unittest
@@ -180,7 +181,7 @@ class TestVerifyPackFunctionality(unittest.TestCase):
 
         # Should return 2 for verification failure
         result = run_verify_pack(args)
-        self.assertEqual(result, 2)
+        self.assertEqual(result, 3)
 
     def test_check_only_mode(self):
         """Test check-only mode skips hash verification."""
@@ -222,7 +223,7 @@ class TestVerifyPackFunctionality(unittest.TestCase):
 
         with patch('sys.stderr'):  # Suppress stderr
             result = run_verify_pack(args)
-        self.assertEqual(result, 2)
+        self.assertEqual(result, 3)
 
     def test_fail_fast_mode(self):
         """Test fail-fast mode stops on first error."""
@@ -244,7 +245,7 @@ class TestVerifyPackFunctionality(unittest.TestCase):
 
         with patch('sys.stderr'):  # Suppress stderr
             result = run_verify_pack(args)
-        self.assertEqual(result, 2)
+        self.assertEqual(result, 3)
 
 
 class TestSchemaValidation(unittest.TestCase):
@@ -304,6 +305,69 @@ class TestSchemaValidation(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertTrue(result.is_missing_optional)
         self.assertIn("jsonschema not installed", result.error_message)
+
+    def test_valid_findings_with_jsonschema(self):
+        """Test schema validation passes with jsonschema installed."""
+        if importlib.util.find_spec("jsonschema") is None:
+            self.skipTest("jsonschema not installed")
+
+        pack_dir = self.temp_path / "valid_schema"
+        pack_dir.mkdir()
+        findings_path = pack_dir / "xew_findings.json"
+        findings_path.write_text(json.dumps(self._minimal_valid_findings()), encoding='utf-8')
+
+        result = _validate_findings_schema(pack_dir, quiet=True, verbose=False)
+
+        self.assertTrue(result.success)
+        self.assertFalse(result.is_missing_optional)
+
+    def test_invalid_findings_with_jsonschema(self):
+        """Test schema validation fails with jsonschema installed."""
+        if importlib.util.find_spec("jsonschema") is None:
+            self.skipTest("jsonschema not installed")
+
+        pack_dir = self.temp_path / "invalid_schema"
+        pack_dir.mkdir()
+
+        findings = self._minimal_valid_findings()
+        findings.pop("schema_id", None)
+        findings_path = pack_dir / "xew_findings.json"
+        findings_path.write_text(json.dumps(findings), encoding='utf-8')
+
+        result = _validate_findings_schema(pack_dir, quiet=True, verbose=False)
+
+        self.assertFalse(result.success)
+        self.assertFalse(result.is_missing_optional)
+        self.assertIn("Schema validation failed", result.error_message)
+
+    def _minimal_valid_findings(self):
+        return {
+            "schema_id": "cmdrvl.xew_findings",
+            "schema_version": "1.0",
+            "generated_at": "2025-01-31T12:00:00Z",
+            "toolchain": {
+                "cmdrvl_xew_version": "dev",
+                "arelle_version": "not_installed",
+                "config": {}
+            },
+            "input": {
+                "cik": "0000123456",
+                "accession": "0000123456-25-000001",
+                "form": "10-Q",
+                "filed_date": "2025-01-31",
+                "primary_document_url": "https://example.com/primary.html",
+                "primary_artifact_path": "artifacts/primary.html"
+            },
+            "artifacts": [
+                {
+                    "path": "artifacts/primary.html",
+                    "role": "primary_ixbrl",
+                    "sha256": "0" * 64,
+                    "bytes": 10
+                }
+            ],
+            "findings": []
+        }
 
 
 if __name__ == '__main__':
