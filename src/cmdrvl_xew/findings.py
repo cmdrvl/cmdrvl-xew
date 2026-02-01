@@ -78,13 +78,19 @@ class FindingsWriter:
     def _convert_finding_to_json(self, finding: DetectorFinding) -> Dict[str, Any]:
         """Convert DetectorFinding to JSON schema format."""
 
-        # Build observed instances
+        # Build observed instances with schema compliance
         observed_instances = []
         for instance in sorted(finding.instances, key=lambda i: i.instance_id):
             instance_json = self._convert_instance_to_json(instance, finding.pattern_id)
             observed_instances.append(instance_json)
 
-        # Build finding JSON
+        # Apply truncation for large instance lists (deterministic)
+        max_instances = 100  # Schema compliance limit
+        truncated = len(observed_instances) > max_instances
+        if truncated:
+            observed_instances = observed_instances[:max_instances]
+
+        # Build finding JSON with schema-compliant observed block
         finding_json = {
             "finding_id": finding.finding_id,
             "pattern_id": finding.pattern_id,
@@ -94,7 +100,9 @@ class FindingsWriter:
             "human_review_required": finding.human_review_required,
             "break_triggers": sorted(finding.break_triggers, key=lambda t: t.get('id', '')),
             "observed": {
-                "instance_count": len(finding.instances),
+                "instance_count_total": len(finding.instances),
+                "instance_count_included": len(observed_instances),
+                "truncated": truncated,
                 "instances": observed_instances
             },
             "mechanism": finding.mechanism,
@@ -106,10 +114,18 @@ class FindingsWriter:
             finding_json["suppression_reason"] = finding.suppression_reason
 
         if finding.rule_basis:
-            finding_json["rule_basis"] = sorted(
-                finding.rule_basis,
-                key=lambda r: (r.get('source', ''), r.get('citation', ''))
-            )
+            # Normalize and validate rule basis citations for schema compliance
+            normalized_citations = []
+            for citation in finding.rule_basis:
+                normalized = self._normalize_rule_basis_citation(citation)
+                if normalized:  # Only include valid citations
+                    normalized_citations.append(normalized)
+
+            if normalized_citations:
+                finding_json["rule_basis"] = sorted(
+                    normalized_citations,
+                    key=lambda r: (r.get('source', ''), r.get('citation', ''))
+                )
 
         return finding_json
 
@@ -122,54 +138,162 @@ class FindingsWriter:
             "primary": instance.primary
         }
 
-        # Add pattern-specific data fields
+        # Add pattern-specific data fields in schema-compliant format
         if pattern_id == "XEW-P001":
-            instance_json.update(self._format_p001_data(instance.data))
+            instance_json["data"] = self._format_p001_data(instance.data)
         elif pattern_id == "XEW-P002":
-            instance_json.update(self._format_p002_data(instance.data))
+            instance_json["data"] = self._format_p002_data(instance.data)
         elif pattern_id == "XEW-P004":
-            instance_json.update(self._format_p004_data(instance.data))
+            instance_json["data"] = self._format_p004_data(instance.data)
         elif pattern_id == "XEW-P005":
-            instance_json.update(self._format_p005_data(instance.data))
+            instance_json["data"] = self._format_p005_data(instance.data)
         else:
             # Generic data handling for unknown patterns
             instance_json["data"] = instance.data
 
         return instance_json
 
+    def _normalize_rule_basis_citation(self, citation: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Normalize rule basis citation to schema format.
+
+        Args:
+            citation: Raw citation from detector
+
+        Returns:
+            Schema-compliant citation dict or None if invalid
+        """
+        try:
+            # Extract and normalize source
+            raw_source = citation.get('source', '').upper()
+            source_mapping = {
+                'XBRL SPECIFICATION 2.1': 'XBRL_SPEC',
+                'XBRL_21': 'XBRL_SPEC',
+                'XBRL SPEC': 'XBRL_SPEC',
+                'SEC EFM': 'SEC_EFM',
+                'EFM': 'SEC_EFM',
+                'ARELLE': 'ARELLE_VALIDATION',
+                'DQCRT': 'DQCRT',
+                'OTHER': 'OTHER'
+            }
+
+            # Map source to schema enum
+            source = None
+            for key, value in source_mapping.items():
+                if key in raw_source:
+                    source = value
+                    break
+
+            if not source:
+                source = 'OTHER'  # Default fallback
+
+            # Build normalized citation
+            normalized = {
+                'source': source,
+                'citation': str(citation.get('citation', citation.get('title', ''))),
+            }
+
+            # Add optional fields if present and valid
+            if citation.get('url'):
+                normalized['url'] = citation['url']
+
+            if citation.get('retrieved_at'):
+                normalized['retrieved_at'] = citation['retrieved_at']
+
+            if citation.get('sha256'):
+                sha256 = citation['sha256']
+                # Validate SHA256 format (64 hex chars)
+                if len(sha256) == 64 and all(c in '0123456789abcdefABCDEF' for c in sha256):
+                    normalized['sha256'] = sha256.lower()
+
+            if citation.get('notes'):
+                normalized['notes'] = citation['notes']
+
+            # Validate minimum required fields
+            if not normalized['citation']:
+                return None
+
+            return normalized
+
+        except Exception as e:
+            self.logger.warning(f"Failed to normalize rule basis citation: {e}")
+            return None
+
     def _format_p001_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Format P001-specific instance data."""
+        """Format P001-specific instance data for schema compliance."""
         result = {}
 
+        # Required fields per schema
         if "concept_clark" in data:
             result["concept"] = {"clark": data["concept_clark"]}
 
-        if "duplicate_count" in data:
-            result["duplicate_count"] = data["duplicate_count"]
+        # Use context_ref from data or generate placeholder
+        result["context_ref"] = data.get("context_ref", "ctx_placeholder")
 
-        if "has_value_conflicts" in data:
-            result["has_value_conflicts"] = data["has_value_conflicts"]
+        # Map duplicate_count to fact_count (schema field name)
+        result["fact_count"] = data.get("duplicate_count", 2)
 
-        if "raw_values" in data:
-            result["raw_values"] = data["raw_values"]
+        # Build facts array with evidence snippets
+        facts = []
+        raw_values = data.get("raw_values", [])
 
-        if "normalized_values" in data:
-            result["normalized_values"] = data["normalized_values"]
+        # Create fact references for evidence
+        for i, value in enumerate(raw_values):
+            fact_ref = {
+                "concept": result["concept"],
+                "context_ref": f"{result['context_ref']}_{i}" if len(raw_values) > 1 else result["context_ref"],
+                "value": str(value) if value is not None else ""
+            }
+
+            # Add unit_ref if available
+            if data.get("unit_ref"):
+                fact_ref["unit_ref"] = data["unit_ref"]
+                result["unit_ref"] = data["unit_ref"]
+
+            facts.append(fact_ref)
+
+        result["facts"] = facts
+
+        # Add issue codes if available
+        if data.get("has_value_conflicts"):
+            result["issue_codes"] = ["duplicate_fact", "value_conflict"]
+            result["value_conflict"] = True
+        else:
+            result["issue_codes"] = ["duplicate_fact"]
+            result["value_conflict"] = False
 
         return result
 
     def _format_p002_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Format P002-specific instance data."""
+        """Format P002-specific instance data with evidence snippets."""
         result = {}
 
-        if "extension_concept_clark" in data:
+        # Handle extension concept (qname object from actual P002 detector)
+        if "extension_concept" in data:
+            result["extension_concept"] = data["extension_concept"]
+        elif "extension_concept_clark" in data:
             result["extension_concept"] = {"clark": data["extension_concept_clark"]}
 
         if "anchor_concept_clark" in data:
             result["anchor_concept"] = {"clark": data["anchor_concept_clark"]}
 
-        if "defect_code" in data:
+        # Map issue_codes to defect_code for schema compatibility
+        if "issue_codes" in data:
+            result["defect_code"] = data["issue_codes"][0] if data["issue_codes"] else "unanchored"
+        elif "defect_code" in data:
             result["defect_code"] = data["defect_code"]
+
+        # Include evidence snippets - fact examples showing extension concept usage
+        if "used_fact_examples" in data:
+            result["evidence_snippets"] = {
+                "used_fact_examples": data["used_fact_examples"]
+            }
+
+        # Include anchoring evidence
+        if "anchors" in data:
+            if "evidence_snippets" not in result:
+                result["evidence_snippets"] = {}
+            result["evidence_snippets"]["anchoring_relationships"] = data["anchors"]
 
         return result
 
@@ -192,17 +316,42 @@ class FindingsWriter:
         return result
 
     def _format_p005_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Format P005-specific instance data."""
+        """Format P005-specific instance data for schema compliance."""
         result = {}
 
-        if "schema_refs" in data:
+        # Map issue_code to schema format
+        issue_code = data.get("issue_code", "namespace_schema_ref_mismatch")
+
+        # Schema only accepts specific issue codes
+        valid_issue_codes = ["mixed_taxonomy_versions", "namespace_schema_ref_mismatch"]
+        if issue_code not in valid_issue_codes:
+            # Map common variants to valid codes
+            if "version" in issue_code.lower() or "mismatch" in issue_code.lower():
+                result["issue_code"] = "mixed_taxonomy_versions"
+            else:
+                result["issue_code"] = "namespace_schema_ref_mismatch"
+        else:
+            result["issue_code"] = issue_code
+
+        # Add schema references
+        if "affected_schema_refs" in data:
+            result["schema_refs"] = data["affected_schema_refs"]
+        elif "schema_refs" in data:
             result["schema_refs"] = data["schema_refs"]
+        else:
+            result["schema_refs"] = []
 
+        # Add namespace information
         if "fact_namespaces" in data:
-            result["fact_namespaces"] = data["fact_namespaces"]
+            result["namespaces_in_facts"] = data["fact_namespaces"]
+        else:
+            result["namespaces_in_facts"] = []
 
-        if "inconsistency_type" in data:
-            result["inconsistency_type"] = data["inconsistency_type"]
+        # Add details from description
+        if "description" in data:
+            result["details"] = data["description"]
+        elif "namespace" in data:
+            result["details"] = f"Namespace inconsistency for: {data['namespace']}"
 
         return result
 
