@@ -623,7 +623,7 @@ def run_pack(args: argparse.Namespace) -> int:
         form=args.form,
         explicit_comparator=explicit_comparator,
         history_entries=history_metadata,
-        filed_date=args.filed_date
+        current_accession=args.accession
     )
 
     # Generate toolchain metadata using ToolchainRecorder
@@ -647,6 +647,16 @@ def run_pack(args: argparse.Namespace) -> int:
             "history_window": selection_result.history_window,
             "selection_metadata": selection_result.selection_metadata,
         },
+        "non_redistributable_artifacts": [
+            {
+                "source_url": ref.source_url,
+                "retrieved_at": ref.retrieved_at,
+                "sha256": ref.sha256,
+                "content_type": ref.content_type,
+                "notes": ref.notes,
+            }
+            for ref in non_redistributable_refs
+        ],
     }
 
     # Record complete toolchain metadata
