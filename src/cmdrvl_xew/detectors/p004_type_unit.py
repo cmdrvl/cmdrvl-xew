@@ -20,6 +20,7 @@ from ..util import (
     generate_instance_id,
     create_finding_summary,
     qname_to_clark,
+    qname_object,
     instance_id_from_signature
 )
 
@@ -28,15 +29,12 @@ logger = logging.getLogger(__name__)
 
 # Issue codes for P004 type/unit/numeric violations
 P004_ISSUE_CODES = {
+    'decimals_precision_conflict': 'Both decimals and precision specified (discouraged)',
     'invalid_decimals': 'Decimals attribute invalid for numeric concept type',
     'invalid_precision': 'Precision attribute invalid for numeric concept type',
-    'unit_type_mismatch': 'Unit type incompatible with concept data type',
-    'missing_unit_numeric': 'Numeric fact missing required unit attribute',
-    'unit_on_non_numeric': 'Unit attribute present on non-numeric fact',
-    'negative_decimals': 'Decimals attribute is negative (discouraged)',
-    'excessive_precision': 'Precision attribute excessively high (discouraged)',
-    'decimals_precision_conflict': 'Both decimals and precision specified (discouraged)',
-    'type_constraint_violation': 'Fact value violates concept data type constraints'
+    'missing_unit': 'Numeric fact missing required unit attribute',
+    'non_numeric_with_unit': 'Unit attribute present on non-numeric fact',
+    'unit_incompatible': 'Unit type incompatible with concept data type',
 }
 
 
@@ -214,7 +212,29 @@ class TypeUnitNumericDetector(BaseDetector):
             type_violations = self._check_type_constraints(fact_data)
             violations.extend(type_violations)
 
-        return violations
+        # Map internal issue codes to v1 catalog codes (drop unsupported)
+        issue_code_map = {
+            'missing_unit_numeric': 'missing_unit',
+            'negative_decimals': 'invalid_decimals',
+            'invalid_decimals': 'invalid_decimals',
+            'excessive_precision': 'invalid_precision',
+            'invalid_precision': 'invalid_precision',
+            'decimals_precision_conflict': 'decimals_precision_conflict',
+            'unit_on_non_numeric': 'non_numeric_with_unit',
+            'unit_type_mismatch': 'unit_incompatible',
+            'type_constraint_violation': None,
+        }
+
+        mapped: List[Dict[str, Any]] = []
+        for violation in violations:
+            code = issue_code_map.get(violation.get('issue_code'))
+            if not code:
+                continue
+            mapped_violation = dict(violation)
+            mapped_violation['issue_code'] = code
+            mapped.append(mapped_violation)
+
+        return mapped
 
     def _check_unit_type_compatibility(self, fact_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Check if unit type is compatible with concept data type."""
@@ -400,20 +420,39 @@ class TypeUnitNumericDetector(BaseDetector):
             # Generate instance ID from signature
             instance_id = instance_id_from_signature(signature_bytes)
 
-            # Build instance data
-            instance_data = {
-                'concept_clark': clark_notation,
+            # Build fact_ref (schema-compatible)
+            if not context_ref:
+                return None
+            fact_ref: Dict[str, Any] = {
+                'concept': qname_object(fact_data['qname']),
                 'context_ref': context_ref,
-                'unit_ref': unit_ref,
-                'issue_code': issue_code,
-                'description': description,
-                'fact_value': str(fact_data['value']) if fact_data['value'] is not None else '',
-                'decimals': fact_data['decimals'],
-                'precision': fact_data['precision'],
-                'is_numeric': fact_data['is_numeric'],
-                'type_name': str(fact_data['type_qname']) if fact_data['type_qname'] else '',
-                'signature_debug': signature_bytes.hex()
             }
+            if unit_ref:
+                fact_ref['unit_ref'] = unit_ref
+            if fact_data.get('value') is not None:
+                fact_ref['value'] = str(fact_data['value'])
+            if fact_data.get('decimals') is not None:
+                fact_ref['decimals'] = str(fact_data['decimals'])
+            if fact_data.get('precision') is not None:
+                fact_ref['precision'] = str(fact_data['precision'])
+            arelle_fact = fact_data.get('fact')
+            if arelle_fact is not None:
+                is_nil = getattr(arelle_fact, 'isNil', None)
+                if is_nil is not None:
+                    fact_ref['is_nil'] = bool(is_nil)
+
+            instance_data: Dict[str, Any] = {
+                'issue_code': issue_code,
+                'fact': fact_ref,
+            }
+            if fact_data.get('type_qname') is not None:
+                instance_data['concept_type'] = str(fact_data['type_qname'])
+            if fact_data.get('unit') is not None:
+                try:
+                    unit_measures = get_unit_measures_clark(fact_data['unit'])
+                    instance_data['unit_measures'] = [qname_object(m) for m in unit_measures]
+                except Exception:
+                    pass
 
             return DetectorInstance(
                 instance_id=instance_id,
@@ -457,12 +496,12 @@ class TypeUnitNumericDetector(BaseDetector):
                 # Fallback to embedded rule basis if registry is not loaded
                 return [
                     {
-                        'source': 'XBRL Specification 2.1',
-                        'title': 'Section 4.6 - Data Types',
+                        'source': 'XBRL_SPEC',
+                        'citation': 'Section 4.6 - Data Types',
                         'url': 'http://www.xbrl.org/Specification/XBRL-2.1/REC-2003-12-31/XBRL-2.1-REC-2003-12-31+corrected-errata-2013-02-20.html#_4.6',
                         'retrieved_at': '2026-01-31T00:00:00Z',
                         'sha256': 'placeholder_hash_for_xbrl_21_types',
-                        'summary': 'XBRL facts must use appropriate data types and units as defined by their concepts.'
+                        'notes': 'XBRL facts must use appropriate data types and units as defined by their concepts.'
                     }
                 ]
 

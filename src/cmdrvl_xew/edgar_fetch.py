@@ -174,7 +174,7 @@ def _download(url: str, dest: Path, *, user_agent: str, rate_limiter: RateLimite
     _validate_user_agent(user_agent)
     if rate_limiter:
         rate_limiter.wait()
-    req = urllib.request.Request(url, headers={"User-Agent": user_agent, "Accept-Encoding": "gzip, deflate"})
+    req = urllib.request.Request(url, headers={"User-Agent": user_agent})
     with urllib.request.urlopen(req) as resp:
         dest.write_bytes(resp.read())
 
@@ -198,7 +198,7 @@ def _fetch_text(url: str, *, user_agent: str, rate_limiter: RateLimiter | None =
     _validate_user_agent(user_agent)
     if rate_limiter:
         rate_limiter.wait()
-    req = urllib.request.Request(url, headers={"User-Agent": user_agent, "Accept-Encoding": "gzip, deflate"})
+    req = urllib.request.Request(url, headers={"User-Agent": user_agent})
     with urllib.request.urlopen(req) as resp:
         return resp.read().decode("utf-8", errors="replace")
 

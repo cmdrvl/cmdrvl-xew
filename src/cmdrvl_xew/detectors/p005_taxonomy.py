@@ -5,34 +5,22 @@ Detects inconsistent taxonomy references within iXBRL filings.
 Focuses on mismatches between schema references and actual namespace usage in facts.
 """
 
-from typing import Dict, List, Any, Set, Tuple, Optional
-from collections import defaultdict
+from typing import Dict, List, Any, Set, Optional
 import logging
-from urllib.parse import urlparse
+import re
 
 from ._base import BaseDetector, DetectorContext, DetectorFinding, DetectorInstance
 from ..util import (
     canonical_signature_p005,
     generate_finding_id,
-    generate_instance_id,
     create_finding_summary,
-    qname_to_clark,
     instance_id_from_signature
 )
 
 logger = logging.getLogger(__name__)
 
 
-# Issue codes for P005 taxonomy inconsistency checks
-P005_ISSUE_CODES = {
-    'unreferenced_namespace': 'Namespace used in facts but not declared in schemaRef',
-    'unused_schema_ref': 'SchemaRef declared but namespace not used in any facts',
-    'schema_ref_mismatch': 'SchemaRef href points to different namespace than expected',
-    'duplicate_schema_ref': 'Multiple schemaRef elements for same namespace',
-    'missing_required_namespace': 'Expected standard namespace missing from schemaRef',
-    'malformed_schema_ref': 'SchemaRef href format is malformed or invalid',
-    'version_mismatch': 'SchemaRef version differs from namespace version in facts'
-}
+_VERSION_RE = re.compile(r"/(\d{4}-\d{2}-\d{2})$")
 
 
 class TaxonomyInconsistencyDetector(BaseDetector):
@@ -44,7 +32,7 @@ class TaxonomyInconsistencyDetector(BaseDetector):
 
     @property
     def pattern_name(self) -> str:
-        return "Taxonomy Inconsistency Checks"
+        return "Inconsistent Taxonomy References"
 
     @property
     def alert_eligible(self) -> bool:
@@ -63,15 +51,8 @@ class TaxonomyInconsistencyDetector(BaseDetector):
         self.logger.info("Running XEW-P005 taxonomy inconsistency detection")
 
         try:
-            # Extract schema references from the filing
             schema_refs = self._extract_schema_references(context.xbrl_model)
-            self.logger.debug(f"Extracted {len(schema_refs)} schema references")
-
-            # Extract namespaces used in facts
             fact_namespaces = self._extract_fact_namespaces(context.xbrl_model)
-            self.logger.debug(f"Found {len(fact_namespaces)} unique namespaces in facts")
-
-            # Analyze inconsistencies
             inconsistencies = self._analyze_taxonomy_inconsistencies(schema_refs, fact_namespaces)
             self.logger.debug(f"Detected {len(inconsistencies)} taxonomy inconsistencies")
 
@@ -149,111 +130,62 @@ class TaxonomyInconsistencyDetector(BaseDetector):
 
         return fact_namespaces
 
-    def _analyze_taxonomy_inconsistencies(self,
-                                        schema_refs: List[Dict[str, Any]],
-                                        fact_namespaces: Set[str]) -> List[Dict[str, Any]]:
+    def _analyze_taxonomy_inconsistencies(
+        self,
+        schema_refs: List[Dict[str, Any]],
+        fact_namespaces: Set[str]
+    ) -> List[Dict[str, Any]]:
         """Analyze schema references vs fact namespaces for inconsistencies."""
-        inconsistencies = []
+        inconsistencies: List[Dict[str, Any]] = []
 
-        # Build mapping of declared namespaces
-        declared_namespaces = set()
-        schema_ref_by_namespace = {}
+        schema_ref_hrefs = sorted({ref.get('href') for ref in schema_refs if ref.get('href')})
+        declared_namespaces = sorted({ref.get('namespace') for ref in schema_refs if ref.get('namespace')})
+        fact_namespaces_sorted = sorted(fact_namespaces)
 
-        for ref in schema_refs:
-            namespace = ref.get('namespace')
-            if namespace:
-                declared_namespaces.add(namespace)
-                if namespace in schema_ref_by_namespace:
-                    # Duplicate schema reference
-                    inconsistencies.append({
-                        'issue_code': 'duplicate_schema_ref',
-                        'description': f"Multiple schemaRef elements for namespace: {namespace}",
-                        'namespace': namespace,
-                        'schema_refs': [schema_ref_by_namespace[namespace], ref]
-                    })
-                else:
-                    schema_ref_by_namespace[namespace] = ref
+        missing = sorted(set(fact_namespaces_sorted) - set(declared_namespaces))
+        unused = sorted(set(declared_namespaces) - set(fact_namespaces_sorted))
+        if missing or unused:
+            details_parts = []
+            if missing:
+                details_parts.append(f"namespaces_in_facts_not_in_schema_refs={missing}")
+            if unused:
+                details_parts.append(f"schema_ref_namespaces_not_in_facts={unused}")
+            inconsistencies.append(
+                {
+                    "issue_code": "namespace_schema_ref_mismatch",
+                    "details": "; ".join(details_parts),
+                    "schema_refs": schema_ref_hrefs,
+                    "namespaces_in_facts": fact_namespaces_sorted,
+                }
+            )
 
-        # Check for unreferenced namespaces (used in facts but not declared)
-        unreferenced = fact_namespaces - declared_namespaces
-        for namespace in unreferenced:
-            inconsistencies.append({
-                'issue_code': 'unreferenced_namespace',
-                'description': f"Namespace used in facts but not declared in schemaRef: {namespace}",
-                'namespace': namespace,
-                'schema_refs': [],
-                'fact_usage': True
-            })
-
-        # Check for unused schema references (declared but not used in facts)
-        unused = declared_namespaces - fact_namespaces
-        for namespace in unused:
-            ref = schema_ref_by_namespace.get(namespace)
-            inconsistencies.append({
-                'issue_code': 'unused_schema_ref',
-                'description': f"SchemaRef declared but namespace not used in facts: {namespace}",
-                'namespace': namespace,
-                'schema_refs': [ref] if ref else [],
-                'fact_usage': False
-            })
-
-        # Validate schema reference formats
-        for ref in schema_refs:
-            href = ref.get('href', '')
-            namespace = ref.get('namespace', '')
-
-            # Check for malformed href
-            if href and not self._is_valid_schema_ref_href(href):
-                inconsistencies.append({
-                    'issue_code': 'malformed_schema_ref',
-                    'description': f"SchemaRef href format is malformed: {href}",
-                    'namespace': namespace,
-                    'schema_refs': [ref],
-                    'href': href
-                })
-
-            # Check for href/namespace mismatches (basic heuristics)
-            if href and namespace and self._detect_href_namespace_mismatch(href, namespace):
-                inconsistencies.append({
-                    'issue_code': 'schema_ref_mismatch',
-                    'description': f"SchemaRef href may not match declared namespace",
-                    'namespace': namespace,
-                    'schema_refs': [ref],
-                    'href': href
-                })
+        mixed_versions = self._detect_mixed_taxonomy_versions(fact_namespaces_sorted)
+        if mixed_versions:
+            details = "; ".join(
+                f"{base} versions={sorted(list(versions))}"
+                for base, versions in mixed_versions.items()
+            )
+            inconsistencies.append(
+                {
+                    "issue_code": "mixed_taxonomy_versions",
+                    "details": details,
+                    "schema_refs": schema_ref_hrefs,
+                    "namespaces_in_facts": fact_namespaces_sorted,
+                }
+            )
 
         return inconsistencies
 
-    def _is_valid_schema_ref_href(self, href: str) -> bool:
-        """Basic validation of schema reference href format."""
-        if not href:
-            return False
-
-        # Check if it's a valid URL or relative path
-        try:
-            parsed = urlparse(href)
-            # Must have some path component
-            return bool(parsed.path)
-        except Exception:
-            return False
-
-    def _detect_href_namespace_mismatch(self, href: str, namespace: str) -> bool:
-        """Detect potential href/namespace mismatches using heuristics."""
-        try:
-            # Basic heuristic: check if namespace domain appears in href
-            namespace_parts = namespace.replace('http://', '').replace('https://', '').split('/')
-            href_parts = href.replace('http://', '').replace('https://', '')
-
-            # If namespace has domain and href doesn't contain it, potential mismatch
-            if len(namespace_parts) > 0 and namespace_parts[0]:
-                domain = namespace_parts[0]
-                if domain not in href_parts:
-                    return True
-
-            return False
-        except Exception:
-            # If parsing fails, assume no mismatch to avoid false positives
-            return False
+    def _detect_mixed_taxonomy_versions(self, namespaces: List[str]) -> Dict[str, Set[str]]:
+        versions_by_base: Dict[str, Set[str]] = {}
+        for ns in namespaces:
+            match = _VERSION_RE.search(ns)
+            if not match:
+                continue
+            version = match.group(1)
+            base = ns[:match.start()]
+            versions_by_base.setdefault(base, set()).add(version)
+        return {base: versions for base, versions in versions_by_base.items() if len(versions) > 1}
 
     def _create_finding(self, inconsistencies: List[Dict[str, Any]],
                        schema_refs: List[Dict[str, Any]],
@@ -296,25 +228,25 @@ class TaxonomyInconsistencyDetector(BaseDetector):
 
         return finding
 
-    def _create_instance(self, inconsistency: Dict[str, Any],
-                        schema_refs: List[Dict[str, Any]],
-                        fact_namespaces: Set[str],
-                        context: DetectorContext) -> Optional[DetectorInstance]:
+    def _create_instance(
+        self,
+        inconsistency: Dict[str, Any],
+        schema_refs: List[Dict[str, Any]],
+        fact_namespaces: Set[str],
+        context: DetectorContext
+    ) -> Optional[DetectorInstance]:
         """Create a detector instance from a taxonomy inconsistency."""
         try:
             issue_code = inconsistency['issue_code']
-            namespace = inconsistency.get('namespace', '')
-            description = inconsistency['description']
-
-            # Collect schema ref hrefs and fact namespaces for signature
-            schema_ref_hrefs = [ref.get('href', '') for ref in schema_refs]
-            schema_ref_hrefs = [href for href in schema_ref_hrefs if href]  # Filter empty
+            details = inconsistency['details']
+            schema_ref_hrefs = inconsistency.get('schema_refs', [])
+            namespaces_in_facts = inconsistency.get('namespaces_in_facts', [])
 
             # Generate canonical signature
             signature_bytes = canonical_signature_p005(
                 issue_code=issue_code,
                 schema_refs=schema_ref_hrefs,
-                namespaces=sorted(fact_namespaces)  # Sort for determinism
+                namespaces=namespaces_in_facts
             )
 
             # Generate instance ID from signature
@@ -322,23 +254,15 @@ class TaxonomyInconsistencyDetector(BaseDetector):
 
             # Build instance data
             instance_data = {
-                'issue_code': issue_code,
-                'description': description,
-                'namespace': namespace,
-                'schema_refs_count': len(schema_refs),
-                'fact_namespaces_count': len(fact_namespaces),
-                'affected_schema_refs': [ref.get('href', '') for ref in inconsistency.get('schema_refs', [])],
-                'fact_usage': inconsistency.get('fact_usage'),
-                'signature_debug': signature_bytes.hex()
+                "issue_code": issue_code,
+                "schema_refs": schema_ref_hrefs,
+                "namespaces_in_facts": namespaces_in_facts,
+                "details": details,
             }
-
-            # Add specific data based on issue type
-            if 'href' in inconsistency:
-                instance_data['problematic_href'] = inconsistency['href']
 
             return DetectorInstance(
                 instance_id=instance_id,
-                kind="taxonomy_inconsistency",
+                kind="taxonomy_reference_issue",
                 primary=True,
                 data=instance_data
             )
@@ -358,30 +282,23 @@ class TaxonomyInconsistencyDetector(BaseDetector):
                 'id': 'XEW-BT004',
                 'summary': 'Validator Tightening - Rule enforcement changes surface tolerated taxonomy errors'
             },
-            {
-                'id': 'XEW-BT005',
-                'summary': 'Schema Validation Enhancement - Stricter schema reference validation'
-            }
         ]
 
     def load_rule_basis(self) -> List[Dict[str, Any]]:
-        """Load rule basis for P005 pattern."""
-        return [
-            {
-                'source': 'XBRL_21',
-                'citation': '4.2',
-                'url': 'http://www.xbrl.org/Specification/XBRL-2.1/REC-2003-12-31/XBRL-2.1-REC-2003-12-31+corrected-errata-2013-02-20.html#_4.2',
-                'retrieved_at': '2026-01-31T00:00:00Z',
-                'sha256': 'placeholder_hash_for_xbrl_21_schema_refs'
-            },
-            {
-                'source': 'EFM',
-                'citation': '6.3.2',
-                'url': 'https://www.sec.gov/info/edgar/edgartaxonomies.htm',
-                'retrieved_at': '2026-01-31T00:00:00Z',
-                'sha256': 'placeholder_hash_for_efm_taxonomy_rules'
-            }
-        ]
+        """Load rule basis for P005 pattern from registry."""
+        from .registry import get_registry
+
+        try:
+            registry = get_registry()
+            rule_basis = registry.get_rule_basis(self.pattern_id)
+            if rule_basis:
+                citations = []
+                for rule in rule_basis:
+                    citations.extend(rule.get('citations', []))
+                return citations
+        except Exception as e:
+            self.logger.warning(f"Failed to load rule basis from registry: {e}")
+        return []
 
     def compute_canonical_signature(self, **kwargs) -> str:
         """Compute canonical signature for instance ID generation."""

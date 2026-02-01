@@ -21,6 +21,7 @@ from ..util import (
     generate_instance_id,
     create_finding_summary,
     qname_to_clark,
+    qname_object,
     instance_id_from_signature,
     canonicalize_typed_dimension_member,
     get_unit_measures_clark
@@ -135,8 +136,7 @@ class DuplicateFactsDetector(BaseDetector):
                 return None
 
             # Entity information
-            entity_scheme = getattr(fact_context.entityIdentifier, 'scheme', '')
-            entity_identifier = getattr(fact_context.entityIdentifier, 'value', '')
+            entity_scheme, entity_identifier = self._extract_entity_identifier(fact_context)
 
             # Period signature
             if hasattr(fact_context, 'isInstantPeriod') and fact_context.isInstantPeriod:
@@ -196,6 +196,62 @@ class DuplicateFactsDetector(BaseDetector):
             self.logger.error(f"Failed to compute fact signature: {e}")
             return None
 
+    def _extract_entity_identifier(self, fact_context) -> Tuple[str, str]:
+        """Extract (scheme, identifier) from an Arelle context."""
+        entity = getattr(fact_context, 'entityIdentifier', None)
+        if entity is None:
+            return "", ""
+
+        if isinstance(entity, (tuple, list)) and len(entity) >= 2:
+            return str(entity[0]), str(entity[1])
+
+        if isinstance(entity, dict):
+            scheme = entity.get('scheme') or entity.get('identifierScheme') or ''
+            identifier = entity.get('value') or entity.get('identifier') or ''
+            return str(scheme), str(identifier)
+
+        scheme = getattr(entity, 'scheme', None)
+        identifier = getattr(entity, 'value', None) or getattr(entity, 'identifier', None)
+        return str(scheme or ""), str(identifier or "")
+
+    def _fact_ref_from_fact(self, fact: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Build a schema-compatible fact_ref from an Arelle fact."""
+        fact_context = fact.get('context')
+        if not fact_context:
+            return None
+        context_ref = getattr(fact_context, 'id', None) or getattr(fact_context, 'contextID', None)
+        if not context_ref:
+            return None
+
+        ref: Dict[str, Any] = {
+            'concept': qname_object(fact['qname']),
+            'context_ref': str(context_ref),
+        }
+
+        unit = fact.get('unit')
+        if unit is not None:
+            unit_ref = getattr(unit, 'id', None)
+            if unit_ref:
+                ref['unit_ref'] = str(unit_ref)
+
+        value = fact.get('value')
+        if value is not None:
+            ref['value'] = str(value)
+
+        arelle_fact = fact.get('arelle_fact')
+        if arelle_fact is not None:
+            is_nil = getattr(arelle_fact, 'isNil', None)
+            if is_nil is not None:
+                ref['is_nil'] = bool(is_nil)
+            decimals = getattr(arelle_fact, 'decimals', None)
+            if decimals is not None:
+                ref['decimals'] = str(decimals)
+            precision = getattr(arelle_fact, 'precision', None)
+            if precision is not None:
+                ref['precision'] = str(precision)
+
+        return ref
+
     def _create_finding(self, duplicate_groups: Dict[bytes, List[Dict[str, Any]]], context: DetectorContext) -> DetectorFinding:
         """Create a finding from duplicate fact groups."""
 
@@ -242,33 +298,46 @@ class DuplicateFactsDetector(BaseDetector):
 
             # Extract representative fact information
             first_fact = facts[0]
-            concept_clark = qname_to_clark(first_fact['qname'])
 
             # Normalize fact values and detect conflicts
             normalized_values = []
-            raw_values = []
             for fact in facts:
                 raw_value = str(fact['value']) if fact['value'] is not None else None
                 normalized_value = normalize_fact_value(raw_value, is_numeric=fact['is_numeric'])
 
                 normalized_values.append(normalized_value)
-                raw_values.append(raw_value)
 
             # Check for value conflicts
             has_conflicts = False
-            if len(set(str(v) for v in normalized_values if v is not None)) > 1:
-                has_conflicts = True
+            if len(normalized_values) > 1:
+                base = normalized_values[0]
+                has_conflicts = any(values_conflicting(base, v) for v in normalized_values[1:])
+
+            # Build fact refs (schema-compatible)
+            fact_refs = []
+            for fact in facts:
+                ref = self._fact_ref_from_fact(fact)
+                if ref:
+                    fact_refs.append(ref)
+            if len(fact_refs) < 2:
+                return None
 
             # Build instance data
-            instance_data = {
-                'concept_clark': concept_clark,
-                'duplicate_count': len(facts),
-                'raw_values': raw_values,
-                'normalized_values': [str(v) for v in normalized_values],
-                'has_value_conflicts': has_conflicts,
-                'context_signature': signature_bytes.hex(),  # For debugging/analysis
-                'unit_signature': '',  # Could add normalized unit info here
+            issue_codes = ["duplicate_fact"]
+            if has_conflicts:
+                issue_codes.append("value_conflict")
+
+            instance_data: Dict[str, Any] = {
+                'concept': qname_object(first_fact['qname']),
+                'context_ref': fact_refs[0]['context_ref'],
+                'fact_count': len(fact_refs),
+                'facts': fact_refs,
+                'issue_codes': issue_codes,
+                'value_conflict': has_conflicts,
             }
+            unit_ref = fact_refs[0].get('unit_ref')
+            if unit_ref:
+                instance_data['unit_ref'] = unit_ref
 
             return DetectorInstance(
                 instance_id=instance_id,
@@ -312,12 +381,12 @@ class DuplicateFactsDetector(BaseDetector):
                 # Fallback to embedded rule basis if registry is not loaded
                 return [
                     {
-                        'source': 'XBRL Specification 2.1',
-                        'title': 'Section 4.7.2 - Fact Uniqueness',
+                        'source': 'XBRL_SPEC',
+                        'citation': 'Section 4.7.2 - Fact Uniqueness',
                         'url': 'https://www.xbrl.org/specification/XBRL-2.1/REC-2003-12-31/XBRL-2.1-REC-2003-12-31+corrected-errata-2013-02-20.html',
                         'retrieved_at': '2026-01-31T15:38:00Z',
                         'sha256': 'placeholder_to_be_updated_with_real_hash',
-                        'summary': 'Facts with identical concept QName, context, and unit (when applicable) represent duplicate assertions and create semantic ambiguity.'
+                        'notes': 'Facts with identical concept QName, context, and unit (when applicable) represent duplicate assertions and create semantic ambiguity.'
                     }
                 ]
 

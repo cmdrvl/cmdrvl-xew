@@ -1,12 +1,148 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sys
+from datetime import datetime
+from urllib.parse import urlparse
 
 from .fetch import run_fetch
 from .flatten import run_flatten
 from .pack import run_pack
 from .verify import run_verify_pack
+
+
+def validate_pack_args(args: argparse.Namespace) -> list[str]:
+    """
+    Validate and normalize pack command arguments.
+
+    Returns:
+        List of validation error messages (empty if valid)
+    """
+    errors = []
+
+    # Validate and normalize CIK (must be 10 digits, zero-padded)
+    try:
+        cik = args.cik.strip()
+        if not cik.isdigit():
+            errors.append("CIK must contain only digits")
+        elif len(cik) > 10:
+            errors.append("CIK must be 10 digits or fewer")
+        else:
+            # Zero-pad to 10 digits
+            args.cik = cik.zfill(10)
+    except AttributeError:
+        errors.append("CIK is required")
+
+    # Validate accession format (must match NNNNNNNNNN-NN-NNNNNN)
+    try:
+        accession = args.accession.strip()
+        accession_pattern = re.compile(r"^\d{10}-\d{2}-\d{6}$")
+        if not accession_pattern.match(accession):
+            errors.append("Accession must match format: NNNNNNNNNN-NN-NNNNNN (e.g., 0000123456-12-345678)")
+        else:
+            args.accession = accession
+    except AttributeError:
+        errors.append("Accession is required")
+
+    # Validate form type (support common forms)
+    try:
+        form = args.form.strip().upper()
+        supported_forms = [
+            "10-Q", "10-Q/A", "10-K", "10-K/A",
+            "20-F", "20-F/A", "6-K", "6-K/A",
+            "8-K", "8-K/A"
+        ]
+        if form not in supported_forms:
+            errors.append(f"Form '{args.form}' not supported. Supported forms: {', '.join(supported_forms)}")
+        else:
+            args.form = form
+    except AttributeError:
+        errors.append("Form is required")
+
+    # Validate filed-date format (ISO date: YYYY-MM-DD)
+    try:
+        filed_date = args.filed_date.strip()
+        try:
+            datetime.strptime(filed_date, "%Y-%m-%d")
+            args.filed_date = filed_date
+        except ValueError:
+            errors.append("Filed date must be in format YYYY-MM-DD (e.g., 2026-01-31)")
+    except AttributeError:
+        errors.append("Filed date is required")
+
+    # Validate period-end format if provided
+    if hasattr(args, 'period_end') and args.period_end:
+        try:
+            period_end = args.period_end.strip()
+            datetime.strptime(period_end, "%Y-%m-%d")
+            args.period_end = period_end
+        except ValueError:
+            errors.append("Period end must be in format YYYY-MM-DD (e.g., 2026-01-31)")
+
+    # Validate primary-document-url format
+    try:
+        primary_url = args.primary_document_url.strip()
+        parsed = urlparse(primary_url)
+        if not parsed.scheme or not parsed.netloc:
+            errors.append("Primary document URL must be a valid URL with scheme and domain")
+        else:
+            args.primary_document_url = primary_url
+    except AttributeError:
+        errors.append("Primary document URL is required")
+
+    # Validate pack-id format (alphanumeric, hyphens, underscores)
+    try:
+        pack_id = args.pack_id.strip()
+        if not re.match(r"^[a-zA-Z0-9_-]+$", pack_id):
+            errors.append("Pack ID must contain only letters, numbers, hyphens, and underscores")
+        elif len(pack_id) < 3:
+            errors.append("Pack ID must be at least 3 characters")
+        elif len(pack_id) > 64:
+            errors.append("Pack ID must be 64 characters or fewer")
+        else:
+            args.pack_id = pack_id
+    except AttributeError:
+        errors.append("Pack ID is required")
+
+    # Validate comparator arguments consistency
+    comparator_args = [
+        args.comparator_accession,
+        args.comparator_primary_document_url,
+        args.comparator_primary_artifact_path
+    ]
+    comparator_provided = [arg for arg in comparator_args if arg]
+
+    if comparator_provided:
+        # If any comparator arg is provided, all must be provided
+        if len(comparator_provided) != len(comparator_args):
+            missing = []
+            if not args.comparator_accession:
+                missing.append("--comparator-accession")
+            if not args.comparator_primary_document_url:
+                missing.append("--comparator-primary-document-url")
+            if not args.comparator_primary_artifact_path:
+                missing.append("--comparator-primary-artifact-path")
+            errors.append(f"When using comparator, all three arguments are required: {', '.join(missing)}")
+        else:
+            # Validate comparator accession format
+            comp_accession = args.comparator_accession.strip()
+            if not accession_pattern.match(comp_accession):
+                errors.append("Comparator accession must match format: NNNNNNNNNN-NN-NNNNNN")
+
+            # Validate comparator URL
+            comp_url = args.comparator_primary_document_url.strip()
+            parsed_comp = urlparse(comp_url)
+            if not parsed_comp.scheme or not parsed_comp.netloc:
+                errors.append("Comparator primary document URL must be a valid URL")
+
+    # Validate resolution mode
+    if hasattr(args, 'resolution_mode') and args.resolution_mode:
+        valid_modes = ["offline_only", "offline_preferred", "online_only", "hybrid"]
+        if args.resolution_mode not in valid_modes:
+            errors.append(f"Resolution mode must be one of: {', '.join(valid_modes)}")
+
+    return errors
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -76,6 +212,12 @@ def main(argv: list[str] | None = None) -> int:
         return run_flatten(args)
     if args.cmd == "pack":
         args._invocation_argv = ["cmdrvl-xew", *argv]
+        # Validate and normalize pack command arguments
+        validation_errors = validate_pack_args(args)
+        if validation_errors:
+            for error in validation_errors:
+                print(f"Error: {error}", file=sys.stderr)
+            return 1
         return run_pack(args)
     if args.cmd == "verify-pack":
         return run_verify_pack(args)

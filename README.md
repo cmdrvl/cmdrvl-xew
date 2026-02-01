@@ -86,10 +86,11 @@ Flatten flags:
 - Required: `edgar_dir` (positional), `--out`
 - Optional: `--force`
 
-### Fetch EDGAR Accession Artifacts (experimental)
+### Fetch EDGAR Accession Artifacts (planned; not yet implemented)
 
-`fetch` downloads an accession’s primary HTML and referenced schema/linkbase files into a flat directory.
+Note: `cmdrvl-xew fetch` is not implemented in the CLI yet. This section documents the intended interface for a future EDGAR-driven mode.
 
+Planned interface (not yet implemented):
 ```bash
 cmdrvl-xew fetch \
   --cik 0000123456 \
@@ -99,13 +100,13 @@ cmdrvl-xew fetch \
 ```
 
 Notes:
-- `--user-agent` is required to comply with SEC access policies.
+- When implemented, `--user-agent` will be required to comply with SEC access policies.
 - The output directory must be empty unless `--force` is used.
 - This is an EDGAR-driven convenience mode; artifact-driven `pack` remains the default.
 
 Fetch flags:
-- Required: `--cik`, `--accession`, `--out`, `--user-agent`
-- Optional: `--min-interval`, `--force`
+- Required (planned): `--cik`, `--accession`, `--out`, `--user-agent`
+- Optional (planned): `--min-interval`, `--force`
 
 ### Generate a Pack (artifact-driven)
 

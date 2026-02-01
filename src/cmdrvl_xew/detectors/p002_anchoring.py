@@ -16,6 +16,7 @@ from ..util import (
     generate_instance_id,
     create_finding_summary,
     qname_to_clark,
+    qname_object,
     instance_id_from_signature
 )
 
@@ -29,7 +30,6 @@ P002_ISSUE_CODES = {
     'period_type_mismatch': 'Extension period type differs from anchor period type',
     'type_mismatch': 'Extension data type differs from anchor data type',
     'anchor_to_extension': 'Extension concept anchored to another extension concept',
-    'circular_anchoring': 'Circular anchoring relationship detected',
 }
 
 
@@ -237,6 +237,17 @@ class AnchoringDefectsDetector(BaseDetector):
 
             # Record defects for this concept
             if concept_defects:
+                # Filter to schema-supported issue codes
+                allowed_codes = {
+                    'unanchored',
+                    'anchor_target_abstract',
+                    'period_type_mismatch',
+                    'type_mismatch',
+                    'anchor_to_extension',
+                }
+                concept_defects = [code for code in concept_defects if code in allowed_codes]
+                if not concept_defects:
+                    continue
                 defect_data = {
                     'extension_concept': concept,
                     'extension_qname': qname,
@@ -289,12 +300,14 @@ class AnchoringDefectsDetector(BaseDetector):
     def _create_instance(self, defect_data: Dict[str, Any], context: DetectorContext) -> Optional[DetectorInstance]:
         """Create a detector instance from an anchoring defect."""
         try:
-            extension_clark = defect_data['clark_notation']
             issue_codes = defect_data['issue_codes']
+
+            if not issue_codes:
+                return None
 
             # Generate canonical signature for this defect
             signature_bytes = canonical_signature_p002(
-                extension_concept_clark=extension_clark,
+                extension_concept_clark=defect_data['clark_notation'],
                 issue_codes=issue_codes
             )
 
@@ -302,29 +315,29 @@ class AnchoringDefectsDetector(BaseDetector):
             instance_id = instance_id_from_signature(signature_bytes)
 
             # Extract anchor information for evidence
-            anchoring_info = []
+            anchors = []
             for rel in defect_data.get('anchoring_relationships', []):
                 anchor_concept = rel.get('to_concept')
-                if anchor_concept:
-                    anchor_info = {
-                        'anchor_clark': qname_to_clark(anchor_concept.qname),
-                        'anchor_abstract': getattr(anchor_concept, 'abstract', False),
-                        'anchor_period_type': getattr(anchor_concept, 'periodType', None),
-                        'anchor_type': str(getattr(anchor_concept, 'type', '')),
-                        'arcrole': rel.get('arcrole', '')
-                    }
-                    anchoring_info.append(anchor_info)
+                if anchor_concept and getattr(anchor_concept, 'qname', None):
+                    anchors.append({
+                        'arcrole': rel.get('arcrole', ''),
+                        'target_concept': qname_object(anchor_concept.qname),
+                    })
+            anchors = sorted(anchors, key=lambda a: (a.get('arcrole', ''), a.get('target_concept', {}).get('clark', '')))
+
+            # Find example facts using this extension concept
+            used_fact_examples = self._fact_examples_for_concept(context.xbrl_model, defect_data['extension_qname'])
+            if not used_fact_examples:
+                return None
 
             # Build instance data
-            instance_data = {
-                'extension_concept_clark': extension_clark,
+            instance_data: Dict[str, Any] = {
+                'extension_concept': qname_object(defect_data['extension_qname']),
                 'issue_codes': issue_codes,
-                'issue_codes_csv': ','.join(sorted(issue_codes)),
-                'defect_count': len(issue_codes),
-                'anchoring_relationships': anchoring_info,
-                'anchor_count': len(anchoring_info),
-                'signature_debug': signature_bytes.hex()  # For debugging
+                'used_fact_examples': used_fact_examples,
             }
+            if anchors:
+                instance_data['anchors'] = anchors
 
             return DetectorInstance(
                 instance_id=instance_id,
@@ -372,12 +385,12 @@ class AnchoringDefectsDetector(BaseDetector):
                 # Fallback to embedded rule basis if registry is not loaded
                 return [
                     {
-                        'source': 'SEC Edgar Filing Manual',
-                        'title': 'Section 6.14.3 - Extension Schema Requirements',
+                        'source': 'SEC_EFM',
+                        'citation': 'Section 6.14.3 - Extension Schema Requirements',
                         'url': 'https://www.sec.gov/structureddata/efm',
                         'retrieved_at': '2026-01-31T14:32:00Z',
                         'sha256': 'placeholder_to_be_updated_with_real_hash',
-                        'summary': 'Extension concepts must be properly anchored to standard taxonomy concepts with appropriate type and period alignment.'
+                        'notes': 'Extension concepts must be properly anchored to standard taxonomy concepts with appropriate type and period alignment.'
                     }
                 ]
 
@@ -403,3 +416,53 @@ class AnchoringDefectsDetector(BaseDetector):
         )
 
         return signature_bytes.hex()
+
+    def _fact_ref_from_fact(self, fact: Any) -> Optional[Dict[str, Any]]:
+        """Build a schema-compatible fact_ref from an Arelle fact."""
+        context = getattr(fact, 'context', None)
+        if not context:
+            return None
+        context_ref = getattr(context, 'id', None) or getattr(context, 'contextID', None)
+        if not context_ref:
+            return None
+
+        ref: Dict[str, Any] = {
+            'concept': qname_object(fact.qname),
+            'context_ref': str(context_ref),
+        }
+
+        unit = getattr(fact, 'unit', None)
+        if unit is not None:
+            unit_ref = getattr(unit, 'id', None)
+            if unit_ref:
+                ref['unit_ref'] = str(unit_ref)
+
+        value = getattr(fact, 'value', None)
+        if value is not None:
+            ref['value'] = str(value)
+
+        is_nil = getattr(fact, 'isNil', None)
+        if is_nil is not None:
+            ref['is_nil'] = bool(is_nil)
+
+        decimals = getattr(fact, 'decimals', None)
+        if decimals is not None:
+            ref['decimals'] = str(decimals)
+
+        precision = getattr(fact, 'precision', None)
+        if precision is not None:
+            ref['precision'] = str(precision)
+
+        return ref
+
+    def _fact_examples_for_concept(self, xbrl_model: Any, concept_qname: Any, limit: int = 3) -> List[Dict[str, Any]]:
+        """Collect deterministic fact_ref examples for a given concept."""
+        examples: List[Dict[str, Any]] = []
+        for fact in getattr(xbrl_model, 'facts', []):
+            if getattr(fact, 'qname', None) == concept_qname:
+                ref = self._fact_ref_from_fact(fact)
+                if ref:
+                    examples.append(ref)
+
+        examples.sort(key=lambda r: (r.get('context_ref', ''), r.get('value', '')))
+        return examples[:limit]

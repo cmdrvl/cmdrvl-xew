@@ -220,47 +220,66 @@ class FindingsWriter:
             return None
 
     def _format_p001_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Format P001-specific instance data for schema compliance."""
+        """Format P001-specific instance data with evidence snippets."""
         result = {}
 
-        # Required fields per schema
-        if "concept_clark" in data:
+        # Handle concept from actual P001 structure
+        if "concept" in data and isinstance(data["concept"], dict):
+            result["concept"] = data["concept"]
+        elif "concept_clark" in data:
             result["concept"] = {"clark": data["concept_clark"]}
 
-        # Use context_ref from data or generate placeholder
+        # Use context_ref from data
         result["context_ref"] = data.get("context_ref", "ctx_placeholder")
 
-        # Map duplicate_count to fact_count (schema field name)
-        result["fact_count"] = data.get("duplicate_count", 2)
+        # Map fact_count and include actual facts as evidence
+        if "facts" in data:
+            # Use actual fact data from P001 detector
+            result["facts"] = data["facts"]
+            result["fact_count"] = len(data["facts"])
 
-        # Build facts array with evidence snippets
-        facts = []
-        raw_values = data.get("raw_values", [])
+            # Include facts as evidence snippets
+            result["evidence_snippets"] = {
+                "duplicate_facts": data["facts"]
+            }
+        else:
+            # Fallback for legacy structure
+            result["fact_count"] = data.get("duplicate_count", 2)
 
-        # Create fact references for evidence
-        for i, value in enumerate(raw_values):
-            fact_ref = {
-                "concept": result["concept"],
-                "context_ref": f"{result['context_ref']}_{i}" if len(raw_values) > 1 else result["context_ref"],
-                "value": str(value) if value is not None else ""
+            # Build facts array from raw values
+            facts = []
+            raw_values = data.get("raw_values", [])
+
+            for i, value in enumerate(raw_values):
+                fact_ref = {
+                    "concept": result["concept"],
+                    "context_ref": f"{result['context_ref']}_{i}" if len(raw_values) > 1 else result["context_ref"],
+                    "value": str(value) if value is not None else ""
+                }
+
+                if data.get("unit_ref"):
+                    fact_ref["unit_ref"] = data["unit_ref"]
+                    result["unit_ref"] = data["unit_ref"]
+
+                facts.append(fact_ref)
+
+            result["facts"] = facts
+            result["evidence_snippets"] = {
+                "duplicate_facts": facts
             }
 
-            # Add unit_ref if available
-            if data.get("unit_ref"):
-                fact_ref["unit_ref"] = data["unit_ref"]
-                result["unit_ref"] = data["unit_ref"]
-
-            facts.append(fact_ref)
-
-        result["facts"] = facts
-
-        # Add issue codes if available
-        if data.get("has_value_conflicts"):
+        # Add issue codes and value conflict detection
+        if "issue_codes" in data:
+            result["issue_codes"] = data["issue_codes"]
+        elif data.get("has_value_conflicts"):
             result["issue_codes"] = ["duplicate_fact", "value_conflict"]
-            result["value_conflict"] = True
         else:
             result["issue_codes"] = ["duplicate_fact"]
-            result["value_conflict"] = False
+
+        if "value_conflict" in data:
+            result["value_conflict"] = data["value_conflict"]
+        else:
+            result["value_conflict"] = data.get("has_value_conflicts", False)
 
         return result
 
@@ -298,25 +317,53 @@ class FindingsWriter:
         return result
 
     def _format_p004_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Format P004-specific instance data."""
+        """Format P004-specific instance data with evidence snippets."""
         result = {}
 
-        if "concept_clark" in data:
-            result["concept"] = {"clark": data["concept_clark"]}
+        # Handle concept from actual P004 detector structure
+        if "fact" in data and isinstance(data["fact"], dict):
+            fact = data["fact"]
+            if "concept" in fact:
+                result["concept"] = fact["concept"]
+            if "context_ref" in fact:
+                result["context_ref"] = fact["context_ref"]
+            if "unit_ref" in fact:
+                result["unit_ref"] = fact["unit_ref"]
 
-        if "violation_code" in data:
+            # Include the fact as evidence snippet
+            result["evidence_snippets"] = {
+                "violating_fact": fact
+            }
+        else:
+            # Fallback for legacy structure
+            if "concept_clark" in data:
+                result["concept"] = {"clark": data["concept_clark"]}
+            if "context_ref" in data:
+                result["context_ref"] = data["context_ref"]
+            if "unit_ref" in data:
+                result["unit_ref"] = data["unit_ref"]
+
+        # Map issue_code to violation_code for schema compatibility
+        if "issue_code" in data:
+            result["violation_code"] = data["issue_code"]
+        elif "violation_code" in data:
             result["violation_code"] = data["violation_code"]
 
-        if "context_ref" in data:
-            result["context_ref"] = data["context_ref"]
+        # Include concept type and unit measures as evidence
+        if "concept_type" in data:
+            if "evidence_snippets" not in result:
+                result["evidence_snippets"] = {}
+            result["evidence_snippets"]["concept_type"] = data["concept_type"]
 
-        if "unit_ref" in data:
-            result["unit_ref"] = data["unit_ref"]
+        if "unit_measures" in data:
+            if "evidence_snippets" not in result:
+                result["evidence_snippets"] = {}
+            result["evidence_snippets"]["unit_measures"] = data["unit_measures"]
 
         return result
 
     def _format_p005_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Format P005-specific instance data for schema compliance."""
+        """Format P005-specific instance data with evidence snippets."""
         result = {}
 
         # Map issue_code to schema format
@@ -333,25 +380,30 @@ class FindingsWriter:
         else:
             result["issue_code"] = issue_code
 
-        # Add schema references
-        if "affected_schema_refs" in data:
-            result["schema_refs"] = data["affected_schema_refs"]
-        elif "schema_refs" in data:
+        # Add schema references as evidence
+        if "schema_refs" in data:
             result["schema_refs"] = data["schema_refs"]
-        else:
-            result["schema_refs"] = []
+            # Include schema references as evidence
+            result["evidence_snippets"] = {
+                "schema_references": data["schema_refs"]
+            }
+        elif "affected_schema_refs" in data:
+            result["schema_refs"] = data["affected_schema_refs"]
+            result["evidence_snippets"] = {
+                "schema_references": data["affected_schema_refs"]
+            }
 
-        # Add namespace information
-        if "fact_namespaces" in data:
-            result["namespaces_in_facts"] = data["fact_namespaces"]
-        else:
-            result["namespaces_in_facts"] = []
+        # Include namespaces found in facts as evidence
+        if "namespaces_in_facts" in data:
+            if "evidence_snippets" not in result:
+                result["evidence_snippets"] = {}
+            result["evidence_snippets"]["fact_namespaces"] = data["namespaces_in_facts"]
 
-        # Add details from description
-        if "description" in data:
-            result["details"] = data["description"]
-        elif "namespace" in data:
-            result["details"] = f"Namespace inconsistency for: {data['namespace']}"
+        # Include detailed mismatch information
+        if "details" in data:
+            if "evidence_snippets" not in result:
+                result["evidence_snippets"] = {}
+            result["evidence_snippets"]["details"] = data["details"]
 
         return result
 
