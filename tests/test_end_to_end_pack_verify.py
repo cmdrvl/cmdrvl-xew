@@ -280,6 +280,10 @@ class TestEndToEndPackVerify(unittest.TestCase):
 
         # Should contain history window information in reproducibility metadata
         self.assertIn("history_window", toolchain, "Toolchain should contain history window data")
+        self.assertIn("marker_thresholds", toolchain, "Toolchain should include marker thresholds")
+        thresholds = toolchain["marker_thresholds"]
+        self.assertIn("XEW-M001", thresholds)
+        self.assertIn("XEW-M005", thresholds)
 
     def test_schema_compliance_integration(self):
         """Test that generated packs comply with schema (tests bd-3ap and bd-2m0 fixes)."""

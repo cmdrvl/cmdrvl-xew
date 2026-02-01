@@ -40,6 +40,7 @@ from .markers import (
     detect_duplicate_cleanup_from_findings,
     detect_extension_refactor_marker,
     detect_taxonomy_refresh_marker,
+    marker_thresholds_config,
 )
 
 _ACCESSION_RE = re.compile(r"^\d{10}-\d{2}-\d{6}$")
@@ -1015,6 +1016,8 @@ def run_pack(args: argparse.Namespace) -> int:
     toolchain_path_rel = Path("toolchain") / "toolchain.json"
     toolchain_recorder = ToolchainRecorder()
 
+    marker_thresholds = marker_thresholds_config()
+
     # Prepare comprehensive config for reproducibility
     reproducibility_config = {
         "resolution_mode": args.resolution_mode,
@@ -1026,6 +1029,7 @@ def run_pack(args: argparse.Namespace) -> int:
             "comparator_provided": comparator_provided,
             "policy_notes": comparator_policy_result.notes,
         },
+        "marker_thresholds": marker_thresholds,
         "history_window": history_metadata,
         "comparator_selection": {
             "selected_comparator": selection_result.selected_comparator,
@@ -1047,6 +1051,7 @@ def run_pack(args: argparse.Namespace) -> int:
     # Prepare minimal toolchain config (only settings that affect tool behavior)
     toolchain_config = {
         "resolution_mode": args.resolution_mode,
+        "marker_thresholds": marker_thresholds,
         # Add other tool behavior settings here as needed
     }
 
