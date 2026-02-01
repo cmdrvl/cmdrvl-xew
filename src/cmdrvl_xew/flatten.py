@@ -157,6 +157,18 @@ def run_flatten(args: argparse.Namespace) -> int:
     if not edgar_dir.is_dir():
         raise SystemExit(f"EDGAR directory not found: {edgar_dir}")
 
+    try:
+        edgar_dir_resolved = edgar_dir.resolve()
+        out_dir_resolved = out_dir.resolve()
+        if out_dir_resolved == edgar_dir_resolved or out_dir_resolved.is_relative_to(edgar_dir_resolved):
+            raise SystemExit(f"Output directory must be outside EDGAR source directory: {out_dir}")
+    except FileNotFoundError:
+        # If out_dir doesn't exist yet, resolve() may fail; fall back to absolute comparison.
+        edgar_dir_resolved = edgar_dir.resolve()
+        out_dir_abs = out_dir.absolute()
+        if out_dir_abs == edgar_dir_resolved:
+            raise SystemExit(f"Output directory must be outside EDGAR source directory: {out_dir}")
+
     if out_dir.exists():
         if not out_dir.is_dir():
             raise SystemExit(f"Output path exists and is not a directory: {out_dir}")
