@@ -1,267 +1,267 @@
 {
-  "schema_id": "cmdrvl.xew_rule_basis_map",
-  "schema_version": "1.0",
   "generated_at": "2026-01-31T15:38:00Z",
   "rules": [
     {
-      "issue_code": "duplicate_fact",
-      "pattern_id": "XEW-P001",
       "citations": [
         {
-          "source": "XBRL Specification 2.1",
-          "title": "Section 4.7.2 - Fact Uniqueness",
-          "url": "https://www.xbrl.org/specification/XBRL-2.1/REC-2003-12-31/XBRL-2.1-REC-2003-12-31+corrected-errata-2013-02-20.html",
+          "citation": "Section 4.7.2 - Fact Uniqueness",
+          "notes": "Facts with identical concept QName, context, and unit (when applicable) represent duplicate assertions and create semantic ambiguity.",
           "retrieved_at": "2026-01-31T15:38:00Z",
           "sha256": "placeholder_to_be_updated_with_real_hash",
-          "summary": "Facts with identical concept QName, context, and unit (when applicable) represent duplicate assertions and create semantic ambiguity."
+          "source": "XBRL_SPEC",
+          "url": "https://www.xbrl.org/specification/XBRL-2.1/REC-2003-12-31/XBRL-2.1-REC-2003-12-31+corrected-errata-2013-02-20.html"
         },
         {
-          "source": "SEC Edgar Filing Manual",
-          "title": "Section 6.11.2 - Fact Validation",
-          "url": "https://www.sec.gov/structureddata/efm",
+          "citation": "Section 6.11.2 - Fact Validation",
+          "notes": "Duplicate facts may be rejected under strict validation modes as they violate XBRL semantic consistency.",
           "retrieved_at": "2026-01-31T15:38:00Z",
           "sha256": "placeholder_to_be_updated_with_real_hash",
-          "summary": "Duplicate facts may be rejected under strict validation modes as they violate XBRL semantic consistency."
+          "source": "SEC_EFM",
+          "url": "https://www.sec.gov/structureddata/efm"
         }
-      ]
+      ],
+      "issue_code": "duplicate_fact",
+      "pattern_id": "XEW-P001"
     },
     {
+      "citations": [
+        {
+          "citation": "Section 4.7.2 - Fact Uniqueness",
+          "notes": "When duplicate facts exist with different values, this creates direct semantic contradiction in the XBRL instance.",
+          "retrieved_at": "2026-01-31T15:38:00Z",
+          "sha256": "placeholder_to_be_updated_with_real_hash",
+          "source": "XBRL_SPEC",
+          "url": "https://www.xbrl.org/specification/XBRL-2.1/REC-2003-12-31/XBRL-2.1-REC-2003-12-31+corrected-errata-2013-02-20.html"
+        }
+      ],
       "issue_code": "value_conflict",
-      "pattern_id": "XEW-P001",
-      "citations": [
-        {
-          "source": "XBRL Specification 2.1",
-          "title": "Section 4.7.2 - Fact Uniqueness",
-          "url": "https://www.xbrl.org/specification/XBRL-2.1/REC-2003-12-31/XBRL-2.1-REC-2003-12-31+corrected-errata-2013-02-20.html",
-          "retrieved_at": "2026-01-31T15:38:00Z",
-          "sha256": "placeholder_to_be_updated_with_real_hash",
-          "summary": "When duplicate facts exist with different values, this creates direct semantic contradiction in the XBRL instance."
-        }
-      ]
+      "pattern_id": "XEW-P001"
     },
     {
+      "citations": [
+        {
+          "citation": "Section 6.14.3 - Extension Schema Requirements",
+          "notes": "Extension concepts must have anchoring relationships to standard taxonomy concepts. Abstract concepts cannot serve as valid anchor targets.",
+          "retrieved_at": "2026-01-31T14:32:00Z",
+          "sha256": "a1b2c3d4e5f6789012345678901234567890123456789012345678901234567890",
+          "source": "SEC_EFM",
+          "url": "https://www.sec.gov/structureddata/efm"
+        }
+      ],
       "issue_code": "anchor_target_abstract",
-      "pattern_id": "XEW-P002",
-      "citations": [
-        {
-          "source": "SEC Edgar Filing Manual",
-          "title": "Section 6.14.3 - Extension Schema Requirements",
-          "url": "https://www.sec.gov/structureddata/efm",
-          "retrieved_at": "2026-01-31T14:32:00Z",
-          "sha256": "a1b2c3d4e5f6789012345678901234567890123456789012345678901234567890",
-          "summary": "Extension concepts must have anchoring relationships to standard taxonomy concepts. Abstract concepts cannot serve as valid anchor targets."
-        }
-      ]
+      "pattern_id": "XEW-P002"
     },
     {
+      "citations": [
+        {
+          "citation": "Section 6.14.3 - Extension Schema Requirements",
+          "notes": "Extension concepts must anchor to standard taxonomy concepts, not to other extension concepts.",
+          "retrieved_at": "2026-01-31T14:32:00Z",
+          "sha256": "a1b2c3d4e5f6789012345678901234567890123456789012345678901234567890",
+          "source": "SEC_EFM",
+          "url": "https://www.sec.gov/structureddata/efm"
+        }
+      ],
       "issue_code": "anchor_to_extension",
-      "pattern_id": "XEW-P002",
-      "citations": [
-        {
-          "source": "SEC Edgar Filing Manual",
-          "title": "Section 6.14.3 - Extension Schema Requirements",
-          "url": "https://www.sec.gov/structureddata/efm",
-          "retrieved_at": "2026-01-31T14:32:00Z",
-          "sha256": "a1b2c3d4e5f6789012345678901234567890123456789012345678901234567890",
-          "summary": "Extension concepts must anchor to standard taxonomy concepts, not to other extension concepts."
-        }
-      ]
+      "pattern_id": "XEW-P002"
     },
     {
+      "citations": [
+        {
+          "citation": "Section 4.8 - Concept Declaration",
+          "notes": "Extension concepts must have consistent periodType with their anchor targets. Duration concepts cannot anchor to instant concepts.",
+          "retrieved_at": "2026-01-31T14:32:00Z",
+          "sha256": "0aabd01fa4c77b41e7d2aeac2845f872e53871edcffad96fc99e72ba6555501f",
+          "source": "XBRL_SPEC",
+          "url": "https://www.xbrl.org/specification/XBRL-2.1/REC-2003-12-31/XBRL-2.1-REC-2003-12-31+corrected-errata-2013-02-20.html"
+        }
+      ],
       "issue_code": "period_type_mismatch",
-      "pattern_id": "XEW-P002",
-      "citations": [
-        {
-          "source": "XBRL Specification 2.1",
-          "title": "Section 4.8 - Concept Declaration",
-          "url": "https://www.xbrl.org/specification/XBRL-2.1/REC-2003-12-31/XBRL-2.1-REC-2003-12-31+corrected-errata-2013-02-20.html",
-          "retrieved_at": "2026-01-31T14:32:00Z",
-          "sha256": "0aabd01fa4c77b41e7d2aeac2845f872e53871edcffad96fc99e72ba6555501f",
-          "summary": "Extension concepts must have consistent periodType with their anchor targets. Duration concepts cannot anchor to instant concepts."
-        }
-      ]
+      "pattern_id": "XEW-P002"
     },
     {
+      "citations": [
+        {
+          "citation": "Section 4.8 - Concept Declaration",
+          "notes": "Extension concepts must have compatible data types with their anchor targets.",
+          "retrieved_at": "2026-01-31T14:32:00Z",
+          "sha256": "0aabd01fa4c77b41e7d2aeac2845f872e53871edcffad96fc99e72ba6555501f",
+          "source": "XBRL_SPEC",
+          "url": "https://www.xbrl.org/specification/XBRL-2.1/REC-2003-12-31/XBRL-2.1-REC-2003-12-31+corrected-errata-2013-02-20.html"
+        }
+      ],
       "issue_code": "type_mismatch",
-      "pattern_id": "XEW-P002",
-      "citations": [
-        {
-          "source": "XBRL Specification 2.1",
-          "title": "Section 4.8 - Concept Declaration",
-          "url": "https://www.xbrl.org/specification/XBRL-2.1/REC-2003-12-31/XBRL-2.1-REC-2003-12-31+corrected-errata-2013-02-20.html",
-          "retrieved_at": "2026-01-31T14:32:00Z",
-          "sha256": "0aabd01fa4c77b41e7d2aeac2845f872e53871edcffad96fc99e72ba6555501f",
-          "summary": "Extension concepts must have compatible data types with their anchor targets."
-        }
-      ]
+      "pattern_id": "XEW-P002"
     },
     {
-      "issue_code": "unanchored",
-      "pattern_id": "XEW-P002",
       "citations": [
         {
-          "source": "SEC Edgar Filing Manual",
-          "title": "Section 6.14.3 - Extension Schema Requirements",
-          "url": "https://www.sec.gov/structureddata/efm",
+          "citation": "Section 6.14.3 - Extension Schema Requirements",
+          "notes": "All extension concepts used in facts must have proper anchoring relationships to standard taxonomy concepts.",
           "retrieved_at": "2026-01-31T14:32:00Z",
           "sha256": "a1b2c3d4e5f6789012345678901234567890123456789012345678901234567890",
-          "summary": "All extension concepts used in facts must have proper anchoring relationships to standard taxonomy concepts."
+          "source": "SEC_EFM",
+          "url": "https://www.sec.gov/structureddata/efm"
         }
-      ]
+      ],
+      "issue_code": "unanchored",
+      "pattern_id": "XEW-P002"
     },
     {
+      "citations": [
+        {
+          "citation": "Section 4.6.3 - Decimals and Precision Attributes",
+          "notes": "Facts cannot specify both decimals and precision attributes simultaneously.",
+          "retrieved_at": "2026-01-31T14:32:00Z",
+          "sha256": "c3d4e5f6789012345678901234567890123456789012345678901234567890a1b2",
+          "source": "XBRL_SPEC",
+          "url": "https://www.xbrl.org/specification/XBRL-2.1/REC-2003-12-31/XBRL-2.1-REC-2003-12-31+corrected-errata-2013-02-20.html"
+        }
+      ],
       "issue_code": "decimals_precision_conflict",
-      "pattern_id": "XEW-P004",
-      "citations": [
-        {
-          "source": "XBRL Specification 2.1",
-          "title": "Section 4.6.3 - Decimals and Precision Attributes",
-          "url": "https://www.xbrl.org/specification/XBRL-2.1/REC-2003-12-31/XBRL-2.1-REC-2003-12-31+corrected-errata-2013-02-20.html",
-          "retrieved_at": "2026-01-31T14:32:00Z",
-          "sha256": "c3d4e5f6789012345678901234567890123456789012345678901234567890a1b2",
-          "summary": "Facts cannot specify both decimals and precision attributes simultaneously."
-        }
-      ]
+      "pattern_id": "XEW-P004"
     },
     {
+      "citations": [
+        {
+          "citation": "Section 4.6.3 - Decimals and Precision Attributes",
+          "notes": "Decimals attribute must be a valid integer or 'INF'.",
+          "retrieved_at": "2026-01-31T14:32:00Z",
+          "sha256": "c3d4e5f6789012345678901234567890123456789012345678901234567890a1b2",
+          "source": "XBRL_SPEC",
+          "url": "https://www.xbrl.org/specification/XBRL-2.1/REC-2003-12-31/XBRL-2.1-REC-2003-12-31+corrected-errata-2013-02-20.html"
+        }
+      ],
       "issue_code": "invalid_decimals",
-      "pattern_id": "XEW-P004",
-      "citations": [
-        {
-          "source": "XBRL Specification 2.1",
-          "title": "Section 4.6.3 - Decimals and Precision Attributes",
-          "url": "https://www.xbrl.org/specification/XBRL-2.1/REC-2003-12-31/XBRL-2.1-REC-2003-12-31+corrected-errata-2013-02-20.html",
-          "retrieved_at": "2026-01-31T14:32:00Z",
-          "sha256": "c3d4e5f6789012345678901234567890123456789012345678901234567890a1b2",
-          "summary": "Decimals attribute must be a valid integer or 'INF'."
-        }
-      ]
+      "pattern_id": "XEW-P004"
     },
     {
+      "citations": [
+        {
+          "citation": "Section 4.6.3 - Decimals and Precision Attributes",
+          "notes": "Precision attribute must be a positive integer.",
+          "retrieved_at": "2026-01-31T14:32:00Z",
+          "sha256": "c3d4e5f6789012345678901234567890123456789012345678901234567890a1b2",
+          "source": "XBRL_SPEC",
+          "url": "https://www.xbrl.org/specification/XBRL-2.1/REC-2003-12-31/XBRL-2.1-REC-2003-12-31+corrected-errata-2013-02-20.html"
+        }
+      ],
       "issue_code": "invalid_precision",
-      "pattern_id": "XEW-P004",
-      "citations": [
-        {
-          "source": "XBRL Specification 2.1",
-          "title": "Section 4.6.3 - Decimals and Precision Attributes",
-          "url": "https://www.xbrl.org/specification/XBRL-2.1/REC-2003-12-31/XBRL-2.1-REC-2003-12-31+corrected-errata-2013-02-20.html",
-          "retrieved_at": "2026-01-31T14:32:00Z",
-          "sha256": "c3d4e5f6789012345678901234567890123456789012345678901234567890a1b2",
-          "summary": "Precision attribute must be a positive integer."
-        }
-      ]
+      "pattern_id": "XEW-P004"
     },
     {
+      "citations": [
+        {
+          "citation": "Section 4.6.1 - Numeric Items",
+          "notes": "Numeric facts must specify a unitRef attribute referencing a declared unit.",
+          "retrieved_at": "2026-01-31T14:32:00Z",
+          "sha256": "d4e5f6789012345678901234567890123456789012345678901234567890a1b2c3",
+          "source": "XBRL_SPEC",
+          "url": "https://www.xbrl.org/specification/XBRL-2.1/REC-2003-12-31/XBRL-2.1-REC-2003-12-31+corrected-errata-2013-02-20.html"
+        }
+      ],
       "issue_code": "missing_unit",
-      "pattern_id": "XEW-P004",
-      "citations": [
-        {
-          "source": "XBRL Specification 2.1",
-          "title": "Section 4.6.1 - Numeric Items",
-          "url": "https://www.xbrl.org/specification/XBRL-2.1/REC-2003-12-31/XBRL-2.1-REC-2003-12-31+corrected-errata-2013-02-20.html",
-          "retrieved_at": "2026-01-31T14:32:00Z",
-          "sha256": "d4e5f6789012345678901234567890123456789012345678901234567890a1b2c3",
-          "summary": "Numeric facts must specify a unitRef attribute referencing a declared unit."
-        }
-      ]
+      "pattern_id": "XEW-P004"
     },
     {
+      "citations": [
+        {
+          "citation": "Section 4.6.1 - Numeric Items",
+          "notes": "Non-numeric facts cannot specify unitRef, decimals, or precision attributes.",
+          "retrieved_at": "2026-01-31T14:32:00Z",
+          "sha256": "d4e5f6789012345678901234567890123456789012345678901234567890a1b2c3",
+          "source": "XBRL_SPEC",
+          "url": "https://www.xbrl.org/specification/XBRL-2.1/REC-2003-12-31/XBRL-2.1-REC-2003-12-31+corrected-errata-2013-02-20.html"
+        }
+      ],
       "issue_code": "non_numeric_with_unit",
-      "pattern_id": "XEW-P004",
-      "citations": [
-        {
-          "source": "XBRL Specification 2.1",
-          "title": "Section 4.6.1 - Numeric Items",
-          "url": "https://www.xbrl.org/specification/XBRL-2.1/REC-2003-12-31/XBRL-2.1-REC-2003-12-31+corrected-errata-2013-02-20.html",
-          "retrieved_at": "2026-01-31T14:32:00Z",
-          "sha256": "d4e5f6789012345678901234567890123456789012345678901234567890a1b2c3",
-          "summary": "Non-numeric facts cannot specify unitRef, decimals, or precision attributes."
-        }
-      ]
+      "pattern_id": "XEW-P004"
     },
     {
-      "issue_code": "unit_incompatible",
-      "pattern_id": "XEW-P004",
       "citations": [
         {
-          "source": "SEC Edgar Filing Manual",
-          "title": "Section 6.13.2 - Unit Requirements",
-          "url": "https://www.sec.gov/structureddata/efm",
+          "citation": "Section 6.13.2 - Unit Requirements",
+          "notes": "Facts must use units compatible with their concept data types (e.g., shares concepts require shares units, not currency).",
           "retrieved_at": "2026-01-31T14:32:00Z",
           "sha256": "e5f6789012345678901234567890123456789012345678901234567890a1b2c3d4",
-          "summary": "Facts must use units compatible with their concept data types (e.g., shares concepts require shares units, not currency)."
+          "source": "SEC_EFM",
+          "url": "https://www.sec.gov/structureddata/efm"
         }
-      ]
+      ],
+      "issue_code": "unit_incompatible",
+      "pattern_id": "XEW-P004"
     },
     {
-      "issue_code": "mixed_taxonomy_versions",
-      "pattern_id": "XEW-P005",
       "citations": [
         {
-          "source": "SEC Edgar Filing Manual",
-          "title": "Section 6.12.3 - Taxonomy Reference Consistency",
-          "url": "https://www.sec.gov/structureddata/efm",
+          "citation": "Section 6.12.3 - Taxonomy Reference Consistency",
+          "notes": "Filings must use consistent taxonomy versions throughout. Mixing different versions of the same taxonomy within a filing creates validation conflicts.",
           "retrieved_at": "2026-01-31T14:32:00Z",
           "sha256": "f6789012345678901234567890123456789012345678901234567890a1b2c3d4e5",
-          "summary": "Filings must use consistent taxonomy versions throughout. Mixing different versions of the same taxonomy within a filing creates validation conflicts."
+          "source": "SEC_EFM",
+          "url": "https://www.sec.gov/structureddata/efm"
         }
-      ]
+      ],
+      "issue_code": "mixed_taxonomy_versions",
+      "pattern_id": "XEW-P005"
     },
     {
-      "issue_code": "namespace_schema_ref_mismatch",
-      "pattern_id": "XEW-P005",
       "citations": [
         {
-          "source": "XBRL Specification 2.1",
-          "title": "Section 3.2 - Schema References",
-          "url": "https://www.xbrl.org/specification/XBRL-2.1/REC-2003-12-31/XBRL-2.1-REC-2003-12-31+corrected-errata-2013-02-20.html",
+          "citation": "Section 3.2 - Schema References",
+          "notes": "Schema references (schemaRef href) must match the namespaces actually used in facts and contexts.",
           "retrieved_at": "2026-01-31T14:32:00Z",
           "sha256": "789012345678901234567890123456789012345678901234567890a1b2c3d4e5f6",
-          "summary": "Schema references (schemaRef href) must match the namespaces actually used in facts and contexts."
+          "source": "XBRL_SPEC",
+          "url": "https://www.xbrl.org/specification/XBRL-2.1/REC-2003-12-31/XBRL-2.1-REC-2003-12-31+corrected-errata-2013-02-20.html"
         }
-      ]
+      ],
+      "issue_code": "namespace_schema_ref_mismatch",
+      "pattern_id": "XEW-P005"
     },
     {
-      "issue_code": "duplicate_facts_structural_ambiguity",
-      "pattern_id": "XEW-P001",
       "citations": [
         {
-          "source": "XBRL Specification 2.1",
-          "title": "Section 4.7.1 - Fact Reporting",
-          "url": "https://www.xbrl.org/specification/XBRL-2.1/REC-2003-12-31/XBRL-2.1-REC-2003-12-31+corrected-errata-2013-02-20.html",
+          "citation": "Section 4.7.1 - Fact Reporting",
+          "notes": "XBRL instances should not contain duplicate facts with identical concept/context/unit as this creates structural ambiguity in the data model.",
           "retrieved_at": "2026-01-31T15:38:00Z",
           "sha256": "0aabd01fa4c77b41e7d2aeac2845f872e53871edcffad96fc99e72ba6555501f",
-          "summary": "XBRL instances should not contain duplicate facts with identical concept/context/unit as this creates structural ambiguity in the data model."
+          "source": "XBRL_SPEC",
+          "url": "https://www.xbrl.org/specification/XBRL-2.1/REC-2003-12-31/XBRL-2.1-REC-2003-12-31+corrected-errata-2013-02-20.html"
         }
-      ]
+      ],
+      "issue_code": "duplicate_facts_structural_ambiguity",
+      "pattern_id": "XEW-P001"
     },
     {
-      "issue_code": "duplicate_facts_enforcement_risk",
-      "pattern_id": "XEW-P001",
       "citations": [
         {
-          "source": "SEC Edgar Filing Manual",
-          "title": "Section 6.7.14 - XBRL Data Quality",
-          "url": "https://www.sec.gov/structureddata/efm",
+          "citation": "Section 6.7.14 - XBRL Data Quality",
+          "notes": "Validator tightening may surface duplicate fact ambiguities as fatal errors. Filings should avoid multiple facts with identical concept/context/unit combinations.",
           "retrieved_at": "2026-01-31T15:38:00Z",
           "sha256": "90123456789012345678901234567890123456789012345678901234567890a1b2",
-          "summary": "Validator tightening may surface duplicate fact ambiguities as fatal errors. Filings should avoid multiple facts with identical concept/context/unit combinations."
+          "source": "SEC_EFM",
+          "url": "https://www.sec.gov/structureddata/efm"
         }
-      ]
+      ],
+      "issue_code": "duplicate_facts_enforcement_risk",
+      "pattern_id": "XEW-P001"
     },
     {
-      "issue_code": "duplicate_facts_value_conflict",
-      "pattern_id": "XEW-P001",
       "citations": [
         {
-          "source": "XBRL Specification 2.1",
-          "title": "Section 4.7.1 - Fact Reporting",
-          "url": "https://www.xbrl.org/specification/XBRL-2.1/REC-2003-12-31/XBRL-2.1-REC-2003-12-31+corrected-errata-2013-02-20.html",
+          "citation": "Section 4.7.1 - Fact Reporting",
+          "notes": "When duplicate facts have different values, the contradiction makes the filing data internally inconsistent and unreliable.",
           "retrieved_at": "2026-01-31T15:38:00Z",
           "sha256": "0aabd01fa4c77b41e7d2aeac2845f872e53871edcffad96fc99e72ba6555501f",
-          "summary": "When duplicate facts have different values, the contradiction makes the filing data internally inconsistent and unreliable."
+          "source": "XBRL_SPEC",
+          "url": "https://www.xbrl.org/specification/XBRL-2.1/REC-2003-12-31/XBRL-2.1-REC-2003-12-31+corrected-errata-2013-02-20.html"
         }
-      ]
+      ],
+      "issue_code": "duplicate_facts_value_conflict",
+      "pattern_id": "XEW-P001"
     }
-  ]
+  ],
+  "schema_id": "cmdrvl.xew_rule_basis_map",
+  "schema_version": "1.0"
 }
