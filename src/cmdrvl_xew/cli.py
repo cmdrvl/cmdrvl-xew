@@ -23,6 +23,7 @@ def validate_pack_args(args: argparse.Namespace) -> list[str]:
         List of validation error messages (empty if valid)
     """
     errors = []
+    accession_pattern = re.compile(r"^\d{10}-\d{2}-\d{6}$")
 
     # Validate and normalize CIK (must be 10 digits, zero-padded)
     try:
@@ -40,7 +41,6 @@ def validate_pack_args(args: argparse.Namespace) -> list[str]:
     # Validate accession format (must match NNNNNNNNNN-NN-NNNNNN)
     try:
         accession = args.accession.strip()
-        accession_pattern = re.compile(r"^\d{10}-\d{2}-\d{6}$")
         if not accession_pattern.match(accession):
             errors.append("Accession must match format: NNNNNNNNNN-NN-NNNNNN (e.g., 0000123456-12-345678)")
         else:

@@ -28,7 +28,9 @@ class FindingsWriter:
                       artifacts: List[Dict[str, Any]],
                       toolchain: Dict[str, Any],
                       input_metadata: Dict[str, Any],
-                      ext_metadata: Optional[Dict[str, Any]] = None) -> None:
+                      ext_metadata: Optional[Dict[str, Any]] = None,
+                      markers: Optional[List[Dict[str, Any]]] = None,
+                      generated_at: Optional[str] = None) -> None:
         """
         Write findings to JSON file with deterministic ordering.
 
@@ -39,10 +41,12 @@ class FindingsWriter:
             toolchain: Toolchain information
             input_metadata: Input filing metadata
             ext_metadata: Extension metadata for forward compatibility
+            markers: Optional list of marker dicts for findings output
+            generated_at: Optional ISO timestamp override for findings output
         """
         # Generate complete findings document
         findings_doc = self._build_findings_document(
-            findings, context, artifacts, toolchain, input_metadata, ext_metadata
+            findings, context, artifacts, toolchain, input_metadata, ext_metadata, markers, generated_at
         )
 
         # Write with deterministic formatting
@@ -56,7 +60,9 @@ class FindingsWriter:
                                artifacts: List[Dict[str, Any]],
                                toolchain: Dict[str, Any],
                                input_metadata: Dict[str, Any],
-                               ext_metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+                               ext_metadata: Optional[Dict[str, Any]] = None,
+                               markers: Optional[List[Dict[str, Any]]] = None,
+                               generated_at: Optional[str] = None) -> Dict[str, Any]:
         """Build the complete findings JSON document."""
 
         # Convert findings to schema format with deterministic ordering
@@ -69,12 +75,22 @@ class FindingsWriter:
         document = {
             "schema_id": "cmdrvl.xew_findings",
             "schema_version": "1.0",
-            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "generated_at": generated_at or datetime.now(timezone.utc).isoformat(),
             "toolchain": toolchain,
             "input": input_metadata,
             "artifacts": artifacts,
             "findings": findings_json
         }
+
+        if markers:
+            document["markers"] = sorted(
+                markers,
+                key=lambda m: (
+                    m.get("marker_id", ""),
+                    m.get("boundary", {}).get("from_accession", ""),
+                    m.get("boundary", {}).get("to_accession", ""),
+                ),
+            )
 
         # Add extension metadata if provided (forward compatibility)
         if ext_metadata:
@@ -443,7 +459,9 @@ def write_findings_json(findings: List[DetectorFinding],
                        artifacts: List[Dict[str, Any]],
                        toolchain: Dict[str, Any],
                        input_metadata: Dict[str, Any],
-                       output_path: Path) -> None:
+                       output_path: Path,
+                       markers: Optional[List[Dict[str, Any]]] = None,
+                       generated_at: Optional[str] = None) -> None:
     """
     Convenience function to write findings JSON in one call.
 
@@ -454,6 +472,16 @@ def write_findings_json(findings: List[DetectorFinding],
         toolchain: Toolchain information
         input_metadata: Input filing metadata
         output_path: Path to write JSON file
+        markers: Optional list of marker dicts
+        generated_at: Optional ISO timestamp override for findings output
     """
     writer = create_findings_writer(output_path)
-    writer.write_findings(findings, context, artifacts, toolchain, input_metadata)
+    writer.write_findings(
+        findings,
+        context,
+        artifacts,
+        toolchain,
+        input_metadata,
+        markers=markers,
+        generated_at=generated_at,
+    )

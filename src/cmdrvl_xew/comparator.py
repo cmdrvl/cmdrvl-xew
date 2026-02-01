@@ -29,6 +29,9 @@ form (if any) is considered comparable.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Iterable, Optional, Sequence
+
+from .util import validate_accession_number
 
 
 _BASE_FORM_MAP = {
@@ -170,3 +173,108 @@ def get_comparator_selection_rationale(form: str, comparator_provided: bool = Fa
 
     except ValueError as e:
         return f"Unsupported form type: {e}"
+
+
+def select_prior_accession(current_accession: str, history_accessions: Iterable[str]) -> Optional[str]:
+    """
+    Select the most recent accession strictly prior to the current accession.
+
+    Uses lexicographic ordering on normalized accession strings
+    (NNNNNNNNNN-NN-NNNNNN), which is deterministic and corresponds to
+    chronological ordering given fixed-width numeric segments.
+    """
+    current_norm = validate_accession_number(current_accession)
+    candidates: list[str] = []
+    for accession in history_accessions:
+        try:
+            normalized = validate_accession_number(accession)
+        except ValueError:
+            continue
+        if normalized < current_norm:
+            candidates.append(normalized)
+
+    if not candidates:
+        return None
+
+    candidates.sort()
+    return candidates[-1]
+
+
+def select_comparator_from_history(
+    form: str,
+    current_accession: str,
+    history_accessions: Iterable[str],
+) -> Optional[str]:
+    """
+    Deterministically select a comparator accession from a history window.
+
+    If the form requires a comparator, return the most recent accession
+    strictly prior to the current accession. Otherwise return None.
+    """
+    policy = comparator_policy(form)
+    if not policy.comparator_required:
+        return None
+    return select_prior_accession(current_accession, history_accessions)
+
+
+def sort_history_entries_by_accession(
+    history_entries: Iterable[dict],
+) -> list[dict]:
+    """Return history entries sorted by accession (ascending), skipping invalid entries."""
+    sortable: list[tuple[str, dict]] = []
+    for entry in history_entries:
+        accession = entry.get("accession")
+        if not accession:
+            continue
+        try:
+            normalized = validate_accession_number(accession)
+        except ValueError:
+            continue
+        sortable.append((normalized, entry))
+
+    sortable.sort(key=lambda item: item[0])
+    return [entry for _accession, entry in sortable]
+
+
+def select_comparator_entry_from_history(
+    form: str,
+    current_accession: str,
+    history_entries: Sequence[dict],
+) -> Optional[dict]:
+    """Select comparator entry dict from history based on policy and accession ordering."""
+    comparator_accession = select_comparator_from_history(
+        form,
+        current_accession,
+        [entry.get("accession", "") for entry in history_entries],
+    )
+    if not comparator_accession:
+        return None
+
+    for entry in history_entries:
+        if entry.get("accession") == comparator_accession:
+            return entry
+    return None
+
+
+def comparator_selection_metadata(
+    form: str,
+    current_accession: str,
+    history_entries: Iterable[dict],
+) -> dict:
+    """Build deterministic metadata describing comparator selection (for toolchain recording)."""
+    sorted_entries = sort_history_entries_by_accession(history_entries)
+    history_accessions = [entry.get("accession") for entry in sorted_entries if entry.get("accession")]
+
+    comparator_accession = select_comparator_from_history(
+        form,
+        current_accession,
+        history_accessions,
+    )
+
+    return {
+        "form": form,
+        "current_accession": current_accession,
+        "history_accessions": history_accessions,
+        "comparator_accession": comparator_accession,
+        "comparator_required": comparator_policy(form).comparator_required,
+    }

@@ -260,6 +260,20 @@
       ],
       "issue_code": "duplicate_facts_value_conflict",
       "pattern_id": "XEW-P001"
+    },
+    {
+      "citations": [
+        {
+          "citation": "Adaptation Marker M002: Extension Refactor Detection",
+          "notes": "Detects high churn (>30% change) in extension concept set between filings to signal taxonomy rebuilds. Evidence includes counts of new/retired extension QNames and example concepts.",
+          "retrieved_at": "2026-02-01T14:37:00Z",
+          "sha256": "placeholder_m002_methodology_hash",
+          "source": "XEW_METHODOLOGY",
+          "url": null
+        }
+      ],
+      "issue_code": "extension_refactor_event",
+      "pattern_id": "XEW-M002"
     }
   ],
   "schema_id": "cmdrvl.xew_rule_basis_map",

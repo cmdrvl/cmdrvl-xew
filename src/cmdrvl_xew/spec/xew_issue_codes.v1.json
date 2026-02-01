@@ -34,6 +34,11 @@
         "mixed_taxonomy_versions",
         "namespace_schema_ref_mismatch"
       ]
+    },
+    "XEW-M002": {
+      "issue_codes": [
+        "extension_refactor_event"
+      ]
     }
   }
 }

@@ -35,6 +35,16 @@
         "arelle_version": { "type": "string", "minLength": 1 },
         "arelle_sec_plugin_version": { "type": "string" },
         "dqcrt_version": { "type": "string" },
+        "recorded_at": { "type": "string", "format": "date-time" },
+        "system_info": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "platform": { "type": "string" },
+            "python_version": { "type": "string" },
+            "architecture": { "type": "string" }
+          }
+        },
         "config": {
           "type": "object",
           "description": "Settings that can affect reproducibility (offline/online resolution, cache policy, etc.).",
@@ -48,6 +58,7 @@
       "required": ["cik", "accession", "form", "filed_date", "primary_document_url", "primary_artifact_path"],
       "properties": {
         "issuer_name": { "type": "string" },
+        "ticker_symbol": { "type": "string" },
         "cik": {
           "type": "string",
           "pattern": "^\\d{10}$",
@@ -60,6 +71,13 @@
         "form": { "type": "string", "minLength": 1 },
         "filed_date": { "type": "string", "format": "date" },
         "period_end": { "type": "string", "format": "date" },
+        "fiscal_year": { "type": "integer" },
+        "fiscal_period": { "type": "string" },
+        "amendment_flag": { "type": "boolean" },
+        "metadata_provenance": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
         "primary_document_url": { "type": "string", "format": "uri" },
         "primary_artifact_path": { "type": "string", "minLength": 1 },
         "comparator": {
@@ -67,10 +85,14 @@
           "additionalProperties": false,
           "required": ["accession", "primary_document_url", "primary_artifact_path"],
           "properties": {
+            "issuer_name": { "type": "string" },
             "accession": {
               "type": "string",
               "pattern": "^\\d{10}-\\d{2}-\\d{6}$"
             },
+            "period_end": { "type": "string", "format": "date" },
+            "fiscal_year": { "type": "integer" },
+            "fiscal_period": { "type": "string" },
             "primary_document_url": { "type": "string", "format": "uri" },
             "primary_artifact_path": { "type": "string", "minLength": 1 }
           }

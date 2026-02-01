@@ -46,6 +46,46 @@ def _sorted_dir_entries(path: Path) -> list[Path]:
     return sorted(path.iterdir(), key=lambda p: p.name)
 
 
+def _strip_xbrl_wrapper(data: bytes) -> tuple[bytes, bool]:
+    """Strip EDGAR <XBRL> wrapper bytes when present.
+
+    Some EDGAR artifacts are wrapped with <XBRL>...</XBRL> and may be truncated
+    to start with "RL>". This breaks XML parsing. If the wrapper is detected,
+    remove it and return the inner document bytes.
+    """
+    stripped = data.lstrip(b"\r\n\t ")
+    if not stripped:
+        return data, False
+
+    tail = stripped.rstrip()
+    if not tail.lower().endswith(b"</xbrl>"):
+        return data, False
+
+    if stripped.startswith(b"<XBRL>") or stripped.startswith(b"<xbrl>"):
+        inner = stripped[6:]
+    elif stripped.startswith(b"RL>"):
+        inner = stripped[3:]
+    else:
+        return data, False
+
+    inner = inner.lstrip(b"\r\n\t ").rstrip()
+    if inner.lower().endswith(b"</xbrl>"):
+        inner = inner[:-8]
+    return inner, True
+
+
+def _copy_with_optional_wrapper_strip(src: Path, dst: Path) -> bool:
+    """Copy src to dst, stripping EDGAR <XBRL> wrapper if detected."""
+    data = src.read_bytes()
+    normalized, changed = _strip_xbrl_wrapper(data)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if changed:
+        dst.write_bytes(normalized)
+    else:
+        shutil.copy2(src, dst)
+    return changed
+
+
 def _find_primary_ixbrl(edgar_dir: Path) -> Path | None:
     """Find the primary iXBRL HTML in an EDGAR directory.
 
@@ -199,22 +239,30 @@ def run_flatten(args: argparse.Namespace) -> int:
 
     # Step 3: Copy files to flat output directory
     copied = []
+    normalized = []
 
     # Copy primary iXBRL
     primary_dst = out_dir / primary.name
-    shutil.copy2(primary, primary_dst)
+    if _copy_with_optional_wrapper_strip(primary, primary_dst):
+        normalized.append(primary.name)
     copied.append(primary.name)
 
     # Copy extension files
     for filename in sorted(extension_files):
         src_path = extension_files[filename]
         dst_path = out_dir / filename
-        shutil.copy2(src_path, dst_path)
+        if _copy_with_optional_wrapper_strip(src_path, dst_path):
+            normalized.append(filename)
         copied.append(filename)
 
     print(f"Copied {len(copied)} files to {out_dir}:")
     for name in sorted(copied):
         print(f"  {name}")
+    if normalized:
+        print(
+            f"Normalized EDGAR <XBRL> wrapper for {len(normalized)} file(s): "
+            f"{', '.join(sorted(normalized))}"
+        )
 
     # Step 4: Warn about missing expected files
     if schema_ref:

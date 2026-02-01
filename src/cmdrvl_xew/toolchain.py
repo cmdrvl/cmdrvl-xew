@@ -184,6 +184,33 @@ class ToolchainRecorder:
         self.logger.info(f"Written toolchain metadata to {output_path}")
 
 
+def sanitize_toolchain_for_findings(toolchain: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Sanitize toolchain metadata for xew_findings.json schema compliance.
+
+    The findings schema only allows a small set of toolchain fields, so drop
+    any extra keys (e.g., recorded_at, system_info) to avoid validation errors.
+    """
+    if not isinstance(toolchain, dict):
+        return {}
+
+    allowed_keys = {
+        "cmdrvl_xew_version",
+        "arelle_version",
+        "arelle_sec_plugin_version",
+        "dqcrt_version",
+        "config",
+    }
+
+    sanitized = {key: value for key, value in toolchain.items() if key in allowed_keys}
+
+    config = sanitized.get("config")
+    if config is not None and not isinstance(config, dict):
+        sanitized["config"] = {}
+
+    return sanitized
+
+
 # Factory functions
 def create_toolchain_recorder() -> ToolchainRecorder:
     """Create a toolchain recorder."""

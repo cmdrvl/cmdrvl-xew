@@ -1,372 +1,139 @@
 """
-XEW-M001: Taxonomy Refresh Marker
+XEW-M001: Taxonomy Refresh Marker.
 
-Detects significant taxonomy/schema reference changes across filing history
-that indicate structural migrations, extension refreshes, or standard updates.
+Detects schemaRef/taxonomy reference changes across filings. This marker is
+not an alert by itself; it provides triage context for structural migrations.
 """
 
 from __future__ import annotations
 
-import logging
-import re
-from typing import Dict, List, Any, Optional, Set, Tuple
-from urllib.parse import urlparse
+from dataclasses import dataclass
+from typing import Iterable, List, Optional, Sequence, Dict
 
-from .base import BaseMarker, MarkerResult, MarkerEvidence
-
-logger = logging.getLogger(__name__)
+from ..util import validate_accession_number, sort_schema_refs_deterministically
 
 
-class TaxonomyRefreshMarker(BaseMarker):
-    """Detects taxonomy refresh events across filing history."""
+@dataclass(frozen=True)
+class TaxonomySchemaSnapshot:
+    """Snapshot of schemaRef hrefs for a filing."""
 
-    @property
-    def marker_id(self) -> str:
-        return "XEW-M001"
+    accession: str
+    schema_refs: Sequence[str]
 
-    @property
-    def marker_name(self) -> str:
-        return "Taxonomy Refresh Detection"
 
-    @property
-    def default_thresholds(self) -> Dict[str, Any]:
-        """Default thresholds for taxonomy refresh detection."""
-        return {
-            "min_schema_ref_changes": 1,        # Minimum schemaRef changes to trigger
-            "significant_namespace_change": True,  # Flag major namespace changes
-            "extension_schema_weight": 2.0,     # Weight for extension schema changes
-            "standard_taxonomy_weight": 1.0,    # Weight for standard taxonomy changes
-            "major_change_threshold": 3.0       # Combined score threshold for major changes
-        }
+@dataclass(frozen=True)
+class TaxonomyRefreshThresholds:
+    """Thresholds for declaring a taxonomy refresh marker."""
 
-    def analyze(
-        self,
-        current_filing: Dict[str, Any],
-        history_window: List[Dict[str, Any]],
-        thresholds: Optional[Dict[str, Any]] = None
-    ) -> MarkerResult:
-        """
-        Analyze filing history for taxonomy refresh patterns.
+    min_change_count: int = 1
+    min_change_ratio: float = 0.2
+    min_previous_count: int = 1
 
-        Args:
-            current_filing: Current filing with schema references
-            history_window: Historical filings for comparison
-            thresholds: Override default detection thresholds
 
-        Returns:
-            MarkerResult with taxonomy refresh detection status and evidence
-        """
-        effective_thresholds = self._merge_thresholds(thresholds)
+DEFAULT_THRESHOLDS = TaxonomyRefreshThresholds()
 
-        # Extract current filing metadata
-        current_metadata = self._extract_filing_metadata(current_filing)
-        current_accession = current_metadata["accession"]
 
-        if not history_window:
-            return MarkerResult(
-                marker_id=self.marker_id,
-                detected=False,
-                boundary=self._create_boundary(current_accession),
-                evidence=[],
-                threshold_config=effective_thresholds,
-                analysis_metadata={
-                    "total_filings_analyzed": 0,
-                    "schema_refs_current": 0,
-                    "change_score": 0.0,
-                    "analysis_notes": "No history window available for comparison"
-                }
-            )
+def detect_taxonomy_refresh_marker(
+    *,
+    current_accession: str,
+    current_schema_refs: Iterable[str],
+    history_snapshots: Sequence[TaxonomySchemaSnapshot],
+    thresholds: TaxonomyRefreshThresholds = DEFAULT_THRESHOLDS,
+) -> Optional[Dict[str, object]]:
+    """
+    Detect a taxonomy refresh marker (XEW-M001).
 
-        # Extract schema references from current filing
-        current_schema_refs = self._extract_schema_references(current_filing)
+    Args:
+        current_accession: Accession of the current filing (NNNNNNNNNN-NN-NNNNNN)
+        current_schema_refs: SchemaRef hrefs for the current filing
+        history_snapshots: Prior filing snapshots with schemaRef hrefs
+        thresholds: Thresholds for flagging taxonomy refresh events
 
-        # Find best reference filing for comparison
-        reference_filing = self._select_reference_filing(history_window)
-        reference_metadata = self._extract_filing_metadata(reference_filing)
-        reference_schema_refs = self._extract_schema_references(reference_filing)
+    Returns:
+        Marker dict compliant with xew_findings schema, or None if no marker.
+    """
+    current_norm = validate_accession_number(current_accession)
+    previous_snapshot = _select_prior_snapshot(history_snapshots, current_norm)
+    if previous_snapshot is None:
+        return None
 
-        # Analyze changes between current and reference
-        change_analysis = self._analyze_schema_changes(
-            current_schema_refs,
-            reference_schema_refs,
-            current_metadata,
-            reference_metadata,
-            effective_thresholds
-        )
+    previous_norm = validate_accession_number(previous_snapshot.accession)
+    previous_refs = _normalize_schema_refs(previous_snapshot.schema_refs)
+    current_refs = _normalize_schema_refs(current_schema_refs)
 
-        # Determine if changes meet threshold for marker detection
-        detected = change_analysis["change_score"] >= effective_thresholds["major_change_threshold"]
+    prev_count = len(previous_refs)
+    curr_count = len(current_refs)
 
-        # Create boundary
-        boundary = self._create_boundary(current_accession, reference_metadata["accession"])
+    if prev_count < thresholds.min_previous_count:
+        return None
 
-        # Generate evidence
-        evidence = self._generate_evidence(change_analysis, current_metadata, reference_metadata)
+    added_refs = sorted(set(current_refs) - set(previous_refs))
+    removed_refs = sorted(set(previous_refs) - set(current_refs))
+    change_count = len(added_refs) + len(removed_refs)
 
-        # Analysis metadata
-        analysis_metadata = {
-            "total_filings_analyzed": len(history_window),
-            "schema_refs_current": len(current_schema_refs),
-            "schema_refs_reference": len(reference_schema_refs),
-            "change_score": change_analysis["change_score"],
-            "reference_filing_selected": reference_metadata["accession"],
-            "changes_detected": len(change_analysis["changes"]),
-            "analysis_notes": change_analysis.get("notes", "")
-        }
+    if change_count == 0:
+        return None
 
-        return MarkerResult(
-            marker_id=self.marker_id,
-            detected=detected,
-            boundary=boundary,
-            evidence=evidence,
-            threshold_config=effective_thresholds,
-            analysis_metadata=analysis_metadata
-        )
+    change_ratio = change_count / prev_count if prev_count else 0.0
 
-    def _extract_schema_references(self, filing: Dict[str, Any]) -> List[Dict[str, str]]:
-        """Extract schema references from filing artifacts."""
-        schema_refs = []
+    if change_count < thresholds.min_change_count or change_ratio < thresholds.min_change_ratio:
+        return None
 
-        # Check for pre-extracted schema references in filing metadata
-        if "schema_references" in filing:
-            return filing["schema_references"]
+    evidence = {
+        "previous_schema_ref_count": prev_count,
+        "current_schema_ref_count": curr_count,
+        "schema_ref_change_count": change_count,
+        "schema_ref_change_ratio": round(change_ratio, 6),
+        "previous_schema_refs": previous_refs,
+        "current_schema_refs": current_refs,
+        "added_schema_refs": added_refs,
+        "removed_schema_refs": removed_refs,
+        "thresholds": {
+            "min_change_count": thresholds.min_change_count,
+            "min_change_ratio": thresholds.min_change_ratio,
+            "min_previous_count": thresholds.min_previous_count,
+        },
+    }
 
-        # Try to extract from primary artifact if available
-        primary_artifact = filing.get("primary_artifact")
-        if primary_artifact:
-            # This would normally parse the XBRL/iXBRL for schemaRef elements
-            # For now, simulate extraction with placeholder logic
-            schema_refs.extend(self._parse_schema_refs_from_artifact(primary_artifact))
+    return {
+        "marker_id": "XEW-M001",
+        "boundary": {
+            "from_accession": previous_norm,
+            "to_accession": current_norm,
+        },
+        "evidence": evidence,
+    }
 
-        # Check extension artifacts
-        extension_artifacts = filing.get("extension_artifacts", [])
-        for artifact in extension_artifacts:
-            if artifact.get("role") == "extension_schema":
-                schema_refs.append({
-                    "href": artifact.get("source_url", ""),
-                    "namespace": artifact.get("target_namespace", ""),
-                    "type": "extension",
-                    "basename": self._extract_schema_basename(artifact.get("source_url", ""))
-                })
 
-        return schema_refs
-
-    def _parse_schema_refs_from_artifact(self, artifact: Dict[str, Any]) -> List[Dict[str, str]]:
-        """Parse schemaRef elements from primary artifact content."""
-        # In a real implementation, this would parse the iXBRL/XBRL content
-        # For this marker implementation, we'll return a placeholder structure
-
-        schema_refs = []
-        artifact_path = artifact.get("local_path", "")
-
-        # Simulate standard GAAP taxonomy reference
-        schema_refs.append({
-            "href": "https://xbrl.sec.gov/dei/2023/dei-2023.xsd",
-            "namespace": "http://xbrl.sec.gov/dei/2023",
-            "type": "standard",
-            "basename": "dei-2023"
-        })
-
-        # Simulate company extension
-        if "extension" in artifact_path.lower() or "ext" in artifact_path.lower():
-            schema_refs.append({
-                "href": artifact.get("source_url", ""),
-                "namespace": "",  # Would be extracted from actual content
-                "type": "extension",
-                "basename": self._extract_schema_basename(artifact.get("source_url", ""))
-            })
-
-        return schema_refs
-
-    def _extract_schema_basename(self, url: str) -> str:
-        """Extract schema basename from URL."""
+def _select_prior_snapshot(
+    history_snapshots: Sequence[TaxonomySchemaSnapshot],
+    current_accession: str,
+) -> Optional[TaxonomySchemaSnapshot]:
+    """Select the most recent snapshot prior to current accession."""
+    candidates: List[TaxonomySchemaSnapshot] = []
+    for snapshot in history_snapshots:
         try:
-            parsed = urlparse(url)
-            path = parsed.path
-            if path.endswith('.xsd'):
-                return path.split('/')[-1][:-4]  # Remove .xsd extension
-            return path.split('/')[-1]
-        except Exception:
-            return ""
+            accession_norm = validate_accession_number(snapshot.accession)
+        except ValueError:
+            continue
+        if accession_norm < current_accession:
+            candidates.append(snapshot)
 
-    def _select_reference_filing(self, history_window: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Select the best reference filing for comparison."""
-        # Use the most recent filing in the history window
-        # History window is already sorted chronologically (oldest first)
-        return history_window[-1] if history_window else {}
+    if not candidates:
+        return None
 
-    def _analyze_schema_changes(
-        self,
-        current_refs: List[Dict[str, str]],
-        reference_refs: List[Dict[str, str]],
-        current_metadata: Dict[str, Any],
-        reference_metadata: Dict[str, Any],
-        thresholds: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Analyze changes between current and reference schema references."""
+    candidates.sort(key=lambda s: validate_accession_number(s.accession))
+    return candidates[-1]
 
-        changes = []
-        change_score = 0.0
 
-        # Create sets for comparison
-        current_hrefs = {ref.get("href", "") for ref in current_refs}
-        reference_hrefs = {ref.get("href", "") for ref in reference_refs}
-
-        # Detect added schemas
-        added_hrefs = current_hrefs - reference_hrefs
-        for href in added_hrefs:
-            ref_info = next((r for r in current_refs if r.get("href") == href), {})
-            weight = (thresholds["extension_schema_weight"]
-                     if ref_info.get("type") == "extension"
-                     else thresholds["standard_taxonomy_weight"])
-
-            changes.append({
-                "type": "schema_added",
-                "href": href,
-                "namespace": ref_info.get("namespace", ""),
-                "schema_type": ref_info.get("type", "unknown"),
-                "weight": weight
-            })
-            change_score += weight
-
-        # Detect removed schemas
-        removed_hrefs = reference_hrefs - current_hrefs
-        for href in removed_hrefs:
-            ref_info = next((r for r in reference_refs if r.get("href") == href), {})
-            weight = (thresholds["extension_schema_weight"]
-                     if ref_info.get("type") == "extension"
-                     else thresholds["standard_taxonomy_weight"])
-
-            changes.append({
-                "type": "schema_removed",
-                "href": href,
-                "namespace": ref_info.get("namespace", ""),
-                "schema_type": ref_info.get("type", "unknown"),
-                "weight": weight
-            })
-            change_score += weight
-
-        # Detect namespace changes (same basename, different version/namespace)
-        namespace_changes = self._detect_namespace_changes(current_refs, reference_refs)
-        for change in namespace_changes:
-            changes.append(change)
-            change_score += change["weight"]
-
-        # Analysis notes
-        notes = []
-        if len(changes) >= thresholds["min_schema_ref_changes"]:
-            notes.append(f"Detected {len(changes)} schema reference changes")
-        if change_score >= thresholds["major_change_threshold"]:
-            notes.append(f"Change score {change_score:.1f} exceeds major change threshold")
-
-        return {
-            "changes": changes,
-            "change_score": change_score,
-            "notes": "; ".join(notes) if notes else "No significant changes detected"
-        }
-
-    def _detect_namespace_changes(
-        self,
-        current_refs: List[Dict[str, str]],
-        reference_refs: List[Dict[str, str]]
-    ) -> List[Dict[str, Any]]:
-        """Detect namespace/version changes for similar schemas."""
-        namespace_changes = []
-
-        # Group by basename to detect version changes
-        current_by_basename = {}
-        reference_by_basename = {}
-
-        for ref in current_refs:
-            basename = ref.get("basename", "")
-            if basename:
-                current_by_basename[basename] = ref
-
-        for ref in reference_refs:
-            basename = ref.get("basename", "")
-            if basename:
-                reference_by_basename[basename] = ref
-
-        # Find namespace changes for same basename
-        for basename in current_by_basename:
-            if basename in reference_by_basename:
-                current_ns = current_by_basename[basename].get("namespace", "")
-                reference_ns = reference_by_basename[basename].get("namespace", "")
-
-                if current_ns != reference_ns:
-                    namespace_changes.append({
-                        "type": "namespace_change",
-                        "basename": basename,
-                        "old_namespace": reference_ns,
-                        "new_namespace": current_ns,
-                        "schema_type": current_by_basename[basename].get("type", "unknown"),
-                        "weight": 1.5  # Namespace changes are moderately significant
-                    })
-
-        return namespace_changes
-
-    def _generate_evidence(
-        self,
-        change_analysis: Dict[str, Any],
-        current_metadata: Dict[str, Any],
-        reference_metadata: Dict[str, Any]
-    ) -> List[MarkerEvidence]:
-        """Generate evidence for taxonomy refresh detection."""
-        evidence = []
-        changes = change_analysis["changes"]
-
-        if not changes:
-            return evidence
-
-        # Summary evidence
-        change_types = set(change["type"] for change in changes)
-        evidence.append(MarkerEvidence(
-            evidence_type="taxonomy_change_summary",
-            description=f"Detected {len(changes)} taxonomy changes between {reference_metadata['accession']} and {current_metadata['accession']}",
-            details={
-                "current_accession": current_metadata["accession"],
-                "reference_accession": reference_metadata["accession"],
-                "change_count": len(changes),
-                "change_types": list(change_types),
-                "change_score": change_analysis["change_score"]
-            }
-        ))
-
-        # Detailed evidence for each change type
-        for change_type in change_types:
-            type_changes = [c for c in changes if c["type"] == change_type]
-
-            if change_type == "schema_added":
-                hrefs = [c["href"] for c in type_changes]
-                evidence.append(MarkerEvidence(
-                    evidence_type="schemas_added",
-                    description=f"Added {len(type_changes)} new schema references",
-                    details={
-                        "added_schemas": hrefs,
-                        "total_weight": sum(c["weight"] for c in type_changes)
-                    }
-                ))
-
-            elif change_type == "schema_removed":
-                hrefs = [c["href"] for c in type_changes]
-                evidence.append(MarkerEvidence(
-                    evidence_type="schemas_removed",
-                    description=f"Removed {len(type_changes)} schema references",
-                    details={
-                        "removed_schemas": hrefs,
-                        "total_weight": sum(c["weight"] for c in type_changes)
-                    }
-                ))
-
-            elif change_type == "namespace_change":
-                ns_changes = [(c["basename"], c["old_namespace"], c["new_namespace"]) for c in type_changes]
-                evidence.append(MarkerEvidence(
-                    evidence_type="namespace_changes",
-                    description=f"Changed namespaces for {len(type_changes)} schemas",
-                    details={
-                        "namespace_changes": ns_changes,
-                        "total_weight": sum(c["weight"] for c in type_changes)
-                    }
-                ))
-
-        return evidence
+def _normalize_schema_refs(schema_refs: Iterable[str]) -> List[str]:
+    """Normalize and deduplicate schemaRef hrefs deterministically."""
+    normalized: List[str] = []
+    seen = set()
+    for ref in schema_refs:
+        value = str(ref).strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        normalized.append(value)
+    return sort_schema_refs_deterministically(normalized)

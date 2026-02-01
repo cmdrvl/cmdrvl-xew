@@ -135,6 +135,11 @@ def _extract_linkbase_refs(path: Path) -> list[str]:
     return _LINKBASE_REF_RE.findall(text)
 
 
+def extract_schema_refs(path: Path) -> list[str]:
+    """Public helper to extract schemaRef hrefs from an artifact."""
+    return _extract_schema_refs(path)
+
+
 def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="ignore")
 

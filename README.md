@@ -126,12 +126,13 @@ cmdrvl-xew pack \
 
 Notes:
 - The output directory must not exist (or must be empty).
-- `pack` currently copies only the primary HTML to `artifacts/primary.html`; referenced schema/linkbase artifacts are not yet included (planned).
-- Findings are currently empty until detectors are implemented.
+- `pack` copies the primary HTML to `artifacts/primary.html` and includes local schema/linkbase artifacts referenced by the primary document (and its schema). External taxonomy references are skipped (not bundled).
+- Findings are populated when detectors run successfully; if the XBRL model cannot be loaded, the pack will emit empty findings with warnings.
 
 Pack flags:
 - Required: `--pack-id`, `--out`, `--primary`, `--cik`, `--accession`, `--form`, `--filed-date`, `--primary-document-url`
 - Optional: `--issuer-name`, `--period-end`, `--retrieved-at`, `--arelle-version`, `--resolution-mode`, `--derive-artifact-urls`
+- History window (repeatable, all-or-nothing): `--history-accession`, `--history-primary-document-url`, `--history-primary-artifact-path`
 - Comparator (optional, all-or-nothing): `--comparator-accession`, `--comparator-primary-document-url`, `--comparator-primary-artifact-path`
 
 ### Verify a Pack
@@ -187,10 +188,10 @@ Hosted systems (outside this repo) can provide:
 
 Current status:
 - Evidence Pack writer and verifier are implemented.
-- Detectors are not implemented yet (findings are empty).
+- v1 detectors (P001/P002/P004/P005) are implemented; Arelle model loading and detector inputs continue to be refined (the pack currently falls back to a mock model, so findings may be empty without real model loading).
 
 Next steps (v1):
-- Implement v1 detectors (starting with the most deterministic checks).
+- Harden Arelle loading and detector inputs for broader filing coverage.
 - Freeze issue-code enums and pin rule basis per shipped issue code.
 - Add deterministic truncation/capping rules for large instance lists.
 

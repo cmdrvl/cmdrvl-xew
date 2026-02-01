@@ -9,19 +9,38 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
-from .artifacts import ArtifactCollectionError, ArtifactHash, collect_artifacts, create_pack_directory_structure, compute_pack_layout
+from .artifacts import (
+    ArtifactCollectionError,
+    ArtifactHash,
+    collect_artifacts,
+    create_pack_directory_structure,
+    compute_pack_layout,
+    extract_schema_refs,
+)
 from . import __version__
 from .comparator import comparator_policy, ComparatorPolicy
 from .comparator_selection import select_comparator_and_history
 from .exit_codes import ExitCode, exit_invocation_error, exit_processing_error
 from .taxonomy import NonRedistributableReference, non_redistributable_reference_from_path
-from .util import FileHash, sha256_file, utc_now_iso, write_json
+from .util import FileHash, qname_to_clark, sha256_file, utc_now_iso, write_json
 from .findings import FindingsWriter
 from .pack_manifest import PackManifestBuilder
 from .toolchain import ToolchainRecorder
 from .detectors.registry import get_registry
 from .detectors._base import DetectorContext
 from .metadata import extract_metadata
+from .markers import (
+    AnchoringCoverageSnapshot,
+    ContextModelSnapshot,
+    DuplicateSignatureSnapshot,
+    ExtensionSnapshot,
+    TaxonomySchemaSnapshot,
+    detect_anchoring_retrofit_marker,
+    detect_context_model_rewrite_marker,
+    detect_duplicate_cleanup_from_findings,
+    detect_extension_refactor_marker,
+    detect_taxonomy_refresh_marker,
+)
 
 _ACCESSION_RE = re.compile(r"^\d{10}-\d{2}-\d{6}$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -205,7 +224,7 @@ def _validate_date_format(date_str: str, field_name: str) -> str:
     return date_cleaned
 
 
-def _run_xew_detection(primary_path: Path, artifacts_dir: Path, context_metadata: dict) -> list:
+def _run_xew_detection(primary_path: Path, artifacts_dir: Path, context_metadata: dict) -> tuple[list, DetectorContext]:
     """
     Run XEW detection on the primary XBRL document.
 
@@ -215,46 +234,46 @@ def _run_xew_detection(primary_path: Path, artifacts_dir: Path, context_metadata
         context_metadata: Filing context (CIK, accession, etc.)
 
     Returns:
-        List of DetectorFinding objects from pattern detection
+        Tuple of (findings, detector_context) for downstream processing
     """
+    # Initialize detector registry and auto-discover detectors
+    registry = get_registry()
+    registry.auto_discover("cmdrvl_xew.detectors")
+
+    # Load rule basis map for Gate enforcement and citations
+    rule_basis_map_path = Path(__file__).parent / "spec" / "xew_rule_basis_map.v1.json"
+    if rule_basis_map_path.exists():
+        registry.load_rule_basis_map(rule_basis_map_path)
+        import logging
+        logging.info(f"Loaded rule basis map from {rule_basis_map_path}")
+    else:
+        import logging
+        logging.warning(f"Rule basis map not found at {rule_basis_map_path}, Gate enforcement may be limited")
+
+    # Create detector context
+    # Enhanced configuration for detection
+    detection_config = {
+        "primary_document_url": context_metadata.get("primary_document_url", ""),
+        "enable_all_patterns": True,
+        "gate_enforcement": True,
+    }
+
+    # Include comparator selection data for marker detectors
+    if "comparator_selection" in context_metadata:
+        detection_config["comparator_selection"] = context_metadata["comparator_selection"]
+
+    detection_context = DetectorContext(
+        primary_document_path=str(primary_path),
+        artifacts_dir=str(artifacts_dir),
+        cik=context_metadata["cik"],
+        accession=context_metadata["accession"],
+        form=context_metadata["form"],
+        filed_date=context_metadata["filed_date"],
+        xbrl_model=None,  # Will be loaded below
+        config=detection_config,
+    )
+
     try:
-        # Initialize detector registry and auto-discover detectors
-        registry = get_registry()
-        registry.auto_discover("cmdrvl_xew.detectors")
-
-        # Load rule basis map for Gate enforcement and citations
-        rule_basis_map_path = Path(__file__).parent / "spec" / "xew_rule_basis_map.v1.json"
-        if rule_basis_map_path.exists():
-            registry.load_rule_basis_map(rule_basis_map_path)
-            import logging
-            logging.info(f"Loaded rule basis map from {rule_basis_map_path}")
-        else:
-            import logging
-            logging.warning(f"Rule basis map not found at {rule_basis_map_path}, Gate enforcement may be limited")
-
-        # Create detector context
-        # Enhanced configuration for detection
-        detection_config = {
-            "primary_document_url": context_metadata.get("primary_document_url", ""),
-            "enable_all_patterns": True,
-            "gate_enforcement": True,
-        }
-
-        # Include comparator selection data for marker detectors
-        if "comparator_selection" in context_metadata:
-            detection_config["comparator_selection"] = context_metadata["comparator_selection"]
-
-        detection_context = DetectorContext(
-            primary_document_path=str(primary_path),
-            artifacts_dir=str(artifacts_dir),
-            cik=context_metadata["cik"],
-            accession=context_metadata["accession"],
-            form=context_metadata["form"],
-            filed_date=context_metadata["filed_date"],
-            xbrl_model=None,  # Will be loaded below
-            config=detection_config
-        )
-
         # Load XBRL model using Arelle (simplified placeholder)
         # In production, this would use proper Arelle model loading
         try:
@@ -269,12 +288,12 @@ def _run_xew_detection(primary_path: Path, artifacts_dir: Path, context_metadata
             logging.warning(f"Failed to load XBRL model: {e}, using mock model")
             detection_context.xbrl_model = _create_mock_xbrl_model(primary_path)
 
-        # Run all registered detectors with enhanced logging
+        # Run all registered detectors with enhanced logging + priority suppression
         import logging
         logger = logging.getLogger(__name__)
         logger.info(f"Running {len(registry.list_patterns())} detectors with Gate enforcement enabled")
 
-        findings = registry.run_detectors(detection_context)
+        findings, selected_finding = registry.run_detectors_with_priority_selection(detection_context)
 
         logger.info(f"XEW detection completed: {len(findings)} findings from {len(registry.list_patterns())} detectors")
 
@@ -283,17 +302,20 @@ def _run_xew_detection(primary_path: Path, artifacts_dir: Path, context_metadata
             alert_eligible_count = sum(1 for f in findings if f.alert_eligible)
             suppressed_count = sum(1 for f in findings if f.status == "suppressed")
             pattern_coverage = sorted(set(f.pattern_id for f in findings))
-            logger.info(f"Findings summary: {alert_eligible_count} alert-eligible, {suppressed_count} suppressed by Gate")
+            logger.info(f"Findings summary: {alert_eligible_count} alert-eligible, {suppressed_count} suppressed")
             logger.info(f"Pattern coverage: {pattern_coverage}")
+            if selected_finding:
+                logger.info(f"Selected highest-priority finding: {selected_finding.pattern_id}")
         else:
             logger.info("No findings detected")
 
-        return findings
+        return findings, detection_context
 
     except Exception as e:
         import logging
         logging.error(f"XEW detection pipeline failed: {e}")
-        return []
+        detection_context.xbrl_model = detection_context.xbrl_model or _create_mock_xbrl_model(primary_path)
+        return [], detection_context
 
 
 def _create_mock_xbrl_model(primary_path: Path):
@@ -303,8 +325,349 @@ def _create_mock_xbrl_model(primary_path: Path):
             self.modelDocument = None
             self.facts = []
             self.qnameConcepts = {}
+            self.contexts = {}
 
     return MockXBRLModel(primary_path)
+
+
+_STANDARD_NAMESPACE_PREFIXES = (
+    "http://fasb.org/us-gaap/",
+    "http://xbrl.ifrs.org/",
+    "http://www.xbrl.org/",
+    "http://xbrl.sec.gov/",
+)
+
+_ANCHOR_ARCROLES = (
+    "http://www.xbrl.org/2003/arcrole/concept-label",
+    "http://www.xbrl.org/2003/arcrole/concept-reference",
+    "http://xbrl.us/us-gaap/role/label/negated",
+)
+
+
+def _extract_schema_refs_for_marker(path: Path) -> list[str]:
+    try:
+        refs = extract_schema_refs(path)
+    except Exception:
+        return []
+    normalized: list[str] = []
+    seen = set()
+    for ref in refs:
+        value = str(ref).strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        normalized.append(value)
+    return sorted(normalized)
+
+
+def _extract_extension_qnames(xbrl_model) -> list[str]:
+    if xbrl_model is None:
+        return []
+
+    qname_concepts = getattr(xbrl_model, "qnameConcepts", None)
+    if isinstance(qname_concepts, dict):
+        qnames = qname_concepts.keys()
+    else:
+        qnames = getattr(xbrl_model, "factsByQname", {}).keys() if hasattr(xbrl_model, "factsByQname") else []
+
+    extensions: list[str] = []
+    seen = set()
+    for qname in qnames:
+        namespace = getattr(qname, "namespaceURI", None) or getattr(qname, "namespace", None)
+        if not namespace:
+            continue
+        if any(namespace.startswith(prefix) for prefix in _STANDARD_NAMESPACE_PREFIXES):
+            continue
+        try:
+            clark = qname_to_clark(qname)
+        except (TypeError, ValueError):
+            continue
+        if clark in seen:
+            continue
+        seen.add(clark)
+        extensions.append(clark)
+    return sorted(extensions)
+
+
+def _extract_anchored_extension_qnames(xbrl_model) -> list[str]:
+    if xbrl_model is None or not hasattr(xbrl_model, "relationshipSet"):
+        return []
+
+    anchored: set[str] = set()
+    for arcrole in _ANCHOR_ARCROLES:
+        relationships = xbrl_model.relationshipSet(arcrole)
+        if not relationships:
+            continue
+        for rel in getattr(relationships, "modelRelationships", []) or []:
+            from_obj = getattr(rel, "fromModelObject", None)
+            qname = getattr(from_obj, "qname", None)
+            if not qname:
+                continue
+            try:
+                anchored.add(qname_to_clark(qname))
+            except (TypeError, ValueError):
+                continue
+
+    return sorted(anchored)
+
+
+def _extract_context_model_signatures(xbrl_model) -> tuple[int, list[str]]:
+    if xbrl_model is None:
+        return 0, []
+
+    contexts = getattr(xbrl_model, "contexts", None)
+    if isinstance(contexts, dict):
+        context_values = contexts.values()
+        context_count = len(contexts)
+    elif isinstance(contexts, list):
+        context_values = contexts
+        context_count = len(contexts)
+    else:
+        return 0, []
+
+    signatures: list[str] = []
+    seen = set()
+    for context in context_values:
+        dims = getattr(context, "qnameDims", None)
+        if not dims:
+            continue
+        pairs: list[str] = []
+        for dim_qname, dim_value in getattr(dims, "items", lambda: [])():
+            try:
+                dim_clark = qname_to_clark(dim_qname)
+            except (TypeError, ValueError):
+                continue
+            member_qname = getattr(dim_value, "memberQname", None)
+            if member_qname is not None:
+                try:
+                    member_value = qname_to_clark(member_qname)
+                except (TypeError, ValueError):
+                    member_value = str(member_qname)
+            else:
+                typed_member = getattr(dim_value, "typedMember", None)
+                member_value = str(typed_member) if typed_member is not None else ""
+            if not member_value:
+                continue
+            pairs.append(f"{dim_clark}={member_value}")
+        if not pairs:
+            continue
+        pairs.sort()
+        signature = "|".join(pairs)
+        if signature in seen:
+            continue
+        seen.add(signature)
+        signatures.append(signature)
+
+    signatures.sort()
+    return context_count, signatures
+
+
+def _history_primary_paths(history_window: list[dict[str, str]], out_dir: Path) -> list[tuple[str, Path]]:
+    entries: list[tuple[str, Path]] = []
+    for entry in history_window:
+        accession = entry.get("accession")
+        rel_path = entry.get("primary_artifact_path")
+        if not accession or not rel_path:
+            continue
+        primary_path = (out_dir / rel_path).resolve()
+        if not primary_path.is_file():
+            continue
+        entries.append((accession, primary_path))
+    return entries
+
+
+def _extract_duplicate_signature_ids(findings: list) -> list[str]:
+    signature_ids: list[str] = []
+    for finding in findings:
+        pattern_id = getattr(finding, "pattern_id", None)
+        if pattern_id != "XEW-P001":
+            continue
+        instances = getattr(finding, "instances", None) or []
+        for instance in instances:
+            instance_id = getattr(instance, "instance_id", None)
+            if instance_id:
+                signature_ids.append(str(instance_id))
+    return signature_ids
+
+
+def _run_p001_for_marker(
+    *,
+    primary_path: Path,
+    artifacts_dir: Path,
+    cik: str,
+    accession: str,
+    form: str,
+    filed_date: str,
+    xbrl_model,
+) -> list:
+    registry = get_registry()
+    if "XEW-P001" not in registry.list_patterns():
+        return []
+
+    detection_context = DetectorContext(
+        primary_document_path=str(primary_path),
+        artifacts_dir=str(artifacts_dir),
+        cik=cik,
+        accession=accession,
+        form=form,
+        filed_date=filed_date,
+        xbrl_model=xbrl_model,
+        config={
+            "enable_all_patterns": False,
+            "gate_enforcement": True,
+        },
+    )
+
+    try:
+        return registry.run_detectors(detection_context, patterns={"XEW-P001"})
+    except Exception:
+        return []
+
+
+def _compute_markers(
+    *,
+    current_accession: str,
+    current_form: str,
+    current_filed_date: str,
+    cik: str,
+    primary_path: Path,
+    detection_context: DetectorContext,
+    findings: list,
+    history_window: list[dict[str, str]],
+    out_dir: Path,
+) -> list[dict[str, object]]:
+    markers: list[dict[str, object]] = []
+    history_paths = _history_primary_paths(history_window, out_dir)
+
+    # M001: Taxonomy refresh (schemaRef changes)
+    current_schema_refs = _extract_schema_refs_for_marker(primary_path)
+    history_schema_snapshots: list[TaxonomySchemaSnapshot] = []
+    for accession, history_path in history_paths:
+        schema_refs = _extract_schema_refs_for_marker(history_path)
+        if schema_refs:
+            history_schema_snapshots.append(
+                TaxonomySchemaSnapshot(accession=accession, schema_refs=schema_refs)
+            )
+    marker = detect_taxonomy_refresh_marker(
+        current_accession=current_accession,
+        current_schema_refs=current_schema_refs,
+        history_snapshots=history_schema_snapshots,
+    )
+    if marker:
+        markers.append(marker)
+
+    # Prepare history models for remaining markers (best-effort)
+    history_models: list[tuple[str, object, Path]] = []
+    for accession, history_path in history_paths:
+        model = _create_mock_xbrl_model(history_path)
+        history_models.append((accession, model, history_path))
+
+    current_model = detection_context.xbrl_model
+
+    # M002: Extension refactor (extension concept churn)
+    current_extension_qnames = _extract_extension_qnames(current_model)
+    history_extension_snapshots: list[ExtensionSnapshot] = []
+    for accession, model, _history_path in history_models:
+        extension_qnames = _extract_extension_qnames(model)
+        if extension_qnames:
+            history_extension_snapshots.append(
+                ExtensionSnapshot(accession=accession, qnames=extension_qnames)
+            )
+    marker = detect_extension_refactor_marker(
+        current_accession=current_accession,
+        current_extension_qnames=current_extension_qnames,
+        history_snapshots=history_extension_snapshots,
+    )
+    if marker:
+        markers.append(marker)
+
+    # M003: Anchoring retrofit (anchoring coverage change)
+    current_anchored_qnames = _extract_anchored_extension_qnames(current_model)
+    if current_extension_qnames and current_anchored_qnames:
+        current_anchored_qnames = sorted(set(current_anchored_qnames) & set(current_extension_qnames))
+    history_anchoring_snapshots: list[AnchoringCoverageSnapshot] = []
+    for accession, model, _history_path in history_models:
+        extension_qnames = _extract_extension_qnames(model)
+        anchored_qnames = _extract_anchored_extension_qnames(model)
+        if extension_qnames and anchored_qnames:
+            anchored_qnames = sorted(set(anchored_qnames) & set(extension_qnames))
+        if extension_qnames:
+            history_anchoring_snapshots.append(
+                AnchoringCoverageSnapshot(
+                    accession=accession,
+                    extension_qnames=extension_qnames,
+                    anchored_qnames=anchored_qnames,
+                )
+            )
+    marker = detect_anchoring_retrofit_marker(
+        current_accession=current_accession,
+        current_extension_qnames=current_extension_qnames,
+        current_anchored_qnames=current_anchored_qnames,
+        history_snapshots=history_anchoring_snapshots,
+    )
+    if marker:
+        markers.append(marker)
+
+    # M004: Context model rewrite
+    current_context_count, current_dim_signatures = _extract_context_model_signatures(current_model)
+    history_context_snapshots: list[ContextModelSnapshot] = []
+    for accession, model, _history_path in history_models:
+        context_count, dim_signatures = _extract_context_model_signatures(model)
+        if context_count or dim_signatures:
+            history_context_snapshots.append(
+                ContextModelSnapshot(
+                    accession=accession,
+                    context_count=context_count,
+                    dimension_member_signatures=dim_signatures,
+                )
+            )
+    marker = detect_context_model_rewrite_marker(
+        current_accession=current_accession,
+        current_context_count=current_context_count,
+        current_dimension_member_signatures=current_dim_signatures,
+        history_snapshots=history_context_snapshots,
+    )
+    if marker:
+        markers.append(marker)
+
+    # M005: Duplicate cleanup (drop in duplicate signatures)
+    if history_paths:
+        history_duplicate_snapshots: list[DuplicateSignatureSnapshot] = []
+        for accession, model, history_path in history_models:
+            history_findings = _run_p001_for_marker(
+                primary_path=history_path,
+                artifacts_dir=history_path.parent,
+                cik=cik,
+                accession=accession,
+                form=current_form,
+                filed_date=current_filed_date,
+                xbrl_model=model,
+            )
+            signature_ids = _extract_duplicate_signature_ids(history_findings)
+            if signature_ids:
+                history_duplicate_snapshots.append(
+                    DuplicateSignatureSnapshot(
+                        accession=accession,
+                        signature_ids=signature_ids,
+                    )
+                )
+
+        marker = detect_duplicate_cleanup_from_findings(
+            current_accession=current_accession,
+            findings=findings,
+            history_snapshots=history_duplicate_snapshots,
+        )
+        if marker:
+            markers.append(marker)
+
+    markers.sort(
+        key=lambda m: (
+            m.get("marker_id", ""),
+            m.get("boundary", {}).get("from_accession", ""),
+            m.get("boundary", {}).get("to_accession", ""),
+        )
+    )
+    return markers
 
 
 def _validate_pack_args(args: argparse.Namespace) -> None:
@@ -632,6 +995,22 @@ def run_pack(args: argparse.Namespace) -> int:
             }
         )
 
+    # Perform comparator and history window selection for marker analysis
+    explicit_comparator = None
+    if comparator_provided and comparator_primary_dst_rel:
+        explicit_comparator = {
+            "accession": args.comparator_accession,
+            "primary_document_url": args.comparator_primary_document_url,
+            "primary_artifact_path": comparator_primary_dst_rel.as_posix(),
+        }
+
+    selection_result = select_comparator_and_history(
+        form=args.form,
+        explicit_comparator=explicit_comparator,
+        history_entries=history_metadata,
+        current_accession=args.accession,
+    )
+
     # Generate toolchain metadata using ToolchainRecorder
     toolchain_path_rel = Path("toolchain") / "toolchain.json"
     toolchain_recorder = ToolchainRecorder()
@@ -673,6 +1052,10 @@ def run_pack(args: argparse.Namespace) -> int:
 
     # Record complete toolchain metadata
     toolchain_obj = toolchain_recorder.record_toolchain(toolchain_config)
+
+    toolchain_config_obj = toolchain_obj.get("config")
+    if isinstance(toolchain_config_obj, dict):
+        toolchain_config_obj["recorded_at"] = retrieved_at
 
     # Override Arelle version if provided via CLI
     if args.arelle_version:
@@ -802,25 +1185,9 @@ def run_pack(args: argparse.Namespace) -> int:
             entry["source_url"] = source_url
         findings_artifacts.append(entry)
 
-    # Perform comparator and history window selection for marker analysis
-    explicit_comparator = None
-    if comparator_provided and comparator_primary_dst_rel:
-        explicit_comparator = {
-            "accession": args.comparator_accession,
-            "primary_document_url": args.comparator_primary_document_url,
-            "primary_artifact_path": comparator_primary_dst_rel.as_posix(),
-        }
-
-    selection_result = select_comparator_and_history(
-        form=args.form,
-        explicit_comparator=explicit_comparator,
-        history_entries=history_metadata,
-        current_accession=args.accession
-    )
-
     # Run XEW detection on the primary document
     try:
-        xbrl_findings = _run_xew_detection(
+        xbrl_findings, detection_context = _run_xew_detection(
             primary_path=primary_src,
             artifacts_dir=root_dir,
             context_metadata={
@@ -834,27 +1201,37 @@ def run_pack(args: argparse.Namespace) -> int:
                     "history_window": selection_result.history_window,
                     "selection_metadata": selection_result.selection_metadata,
                 },
-            }
+            },
         )
     except Exception as e:
         import logging
         logging.warning(f"XEW detection failed: {e}, continuing with empty findings")
         xbrl_findings = []
+        detection_context = DetectorContext(
+            primary_document_path=str(primary_src),
+            artifacts_dir=str(root_dir),
+            cik=cik,
+            accession=accession,
+            form=form,
+            filed_date=filed_date,
+            xbrl_model=_create_mock_xbrl_model(primary_src),
+            config={},
+        )
+
+    markers = _compute_markers(
+        current_accession=accession,
+        current_form=form,
+        current_filed_date=filed_date,
+        cik=cik,
+        primary_path=primary_src,
+        detection_context=detection_context,
+        findings=xbrl_findings,
+        history_window=selection_result.history_window,
+        out_dir=out_dir,
+    )
 
     # Use FindingsWriter for deterministic output
     findings_writer = FindingsWriter(out_dir / findings_path_rel)
-
-    # Create detector context for findings writer
-    detection_context = DetectorContext(
-        primary_document_path=str(primary_src),
-        artifacts_dir=str(root_dir),
-        cik=cik,
-        accession=accession,
-        form=form,
-        filed_date=filed_date,
-        xbrl_model=None,  # Would be loaded during actual detection
-        config={}  # Configuration parameters
-    )
 
     # Write findings using the dedicated writer
     findings_writer.write_findings(
@@ -863,7 +1240,9 @@ def run_pack(args: argparse.Namespace) -> int:
         artifacts=findings_artifacts,
         toolchain=toolchain_obj,
         input_metadata=input_obj,
-        ext_metadata=ext_metadata
+        ext_metadata=ext_metadata,
+        markers=markers or None,
+        generated_at=retrieved_at,
     )
 
     # Use PackManifestBuilder for deterministic manifest generation
