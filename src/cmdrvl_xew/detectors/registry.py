@@ -267,6 +267,9 @@ class DetectorRegistry:
         priority_finding = self.select_highest_priority_finding(all_findings)
 
         if priority_finding:
+            self._apply_priority_suppression(all_findings, priority_finding)
+
+        if priority_finding:
             self.logger.info(f"Priority selection: {priority_finding.pattern_id} selected "
                            f"from {len(all_findings)} total findings for external alert")
         else:
@@ -274,6 +277,32 @@ class DetectorRegistry:
                            f"{len(all_findings)} total findings")
 
         return all_findings, priority_finding
+
+    def _apply_priority_suppression(
+        self,
+        findings: List[DetectorFinding],
+        selected: DetectorFinding,
+    ) -> None:
+        """Suppress lower-priority alert-eligible findings in-place.
+
+        Findings remain recorded for internal review but are not alert-eligible.
+        """
+        selected_id = selected.finding_id
+        selected_pattern = selected.pattern_id
+        for finding in findings:
+            if finding.finding_id == selected_id:
+                continue
+            if not finding.alert_eligible:
+                continue
+            if finding.status != "detected":
+                continue
+
+            finding.alert_eligible = False
+            finding.status = "suppressed"
+            finding.human_review_required = True
+            finding.suppression_reason = (
+                f"Lower priority than selected pattern {selected_pattern}"
+            )
 
     def list_patterns_by_priority(self) -> List[str]:
         """

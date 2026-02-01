@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 
 from .edgar_fetch import accession_base_url, collect_accession_artifacts, download_artifacts, fetch_accession_items
+from .exit_codes import exit_invocation_error, exit_system_error, ExitCode
 
 _ACCESSION_RE = re.compile(r"^\d{10}-\d{2}-\d{6}$")
 
@@ -13,9 +14,9 @@ def run_fetch(args: argparse.Namespace) -> int:
     out_dir = Path(args.out)
     if out_dir.exists():
         if not out_dir.is_dir():
-            raise SystemExit(f"Output path exists and is not a directory: {out_dir}")
+            exit_invocation_error(f"Output path exists and is not a directory: {out_dir}")
         if any(out_dir.iterdir()) and not args.force:
-            raise SystemExit(f"Output directory not empty (use --force to overwrite): {out_dir}")
+            exit_invocation_error(f"Output directory not empty (use --force to overwrite): {out_dir}")
     else:
         out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -24,7 +25,7 @@ def run_fetch(args: argparse.Namespace) -> int:
 
     user_agent = args.user_agent.strip()
     if not user_agent:
-        raise SystemExit("--user-agent is required for EDGAR access")
+        exit_invocation_error("--user-agent is required for EDGAR access")
 
     items = fetch_accession_items(cik, accession, user_agent=user_agent)
     primary, extensions = collect_accession_artifacts(items)
@@ -43,7 +44,7 @@ def run_fetch(args: argparse.Namespace) -> int:
     for path in sorted(downloaded, key=lambda p: p.name):
         print(f"  {path.name}")
 
-    return 0
+    return ExitCode.SUCCESS
 
 
 def _normalize_cik(cik: str) -> str:

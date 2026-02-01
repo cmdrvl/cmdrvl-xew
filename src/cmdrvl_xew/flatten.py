@@ -23,6 +23,8 @@ import shutil
 from pathlib import Path
 from urllib.parse import urlparse
 
+from .exit_codes import exit_invocation_error, exit_system_error, ExitCode
+
 # Namespaces for XBRL/iXBRL parsing
 _XLINK_NS = "http://www.w3.org/1999/xlink"
 _LINK_NS = "http://www.xbrl.org/2003/linkbase"
@@ -155,32 +157,32 @@ def run_flatten(args: argparse.Namespace) -> int:
     out_dir = Path(args.out)
 
     if not edgar_dir.is_dir():
-        raise SystemExit(f"EDGAR directory not found: {edgar_dir}")
+        exit_invocation_error(f"EDGAR directory not found: {edgar_dir}")
 
     try:
         edgar_dir_resolved = edgar_dir.resolve()
         out_dir_resolved = out_dir.resolve()
         if out_dir_resolved == edgar_dir_resolved or out_dir_resolved.is_relative_to(edgar_dir_resolved):
-            raise SystemExit(f"Output directory must be outside EDGAR source directory: {out_dir}")
+            exit_invocation_error(f"Output directory must be outside EDGAR source directory: {out_dir}")
     except FileNotFoundError:
         # If out_dir doesn't exist yet, resolve() may fail; fall back to absolute comparison.
         edgar_dir_resolved = edgar_dir.resolve()
         out_dir_abs = out_dir.absolute()
         if out_dir_abs == edgar_dir_resolved:
-            raise SystemExit(f"Output directory must be outside EDGAR source directory: {out_dir}")
+            exit_invocation_error(f"Output directory must be outside EDGAR source directory: {out_dir}")
 
     if out_dir.exists():
         if not out_dir.is_dir():
-            raise SystemExit(f"Output path exists and is not a directory: {out_dir}")
+            exit_invocation_error(f"Output path exists and is not a directory: {out_dir}")
         if any(out_dir.iterdir()) and not args.force:
-            raise SystemExit(f"Output directory not empty (use --force to overwrite): {out_dir}")
+            exit_invocation_error(f"Output directory not empty (use --force to overwrite): {out_dir}")
     else:
         out_dir.mkdir(parents=True, exist_ok=True)
 
     # Step 1: Find primary iXBRL
     primary = _find_primary_ixbrl(edgar_dir)
     if primary is None:
-        raise SystemExit(f"No primary iXBRL found in {edgar_dir} (looked in {_FORM_DIRS})")
+        exit_invocation_error(f"No primary iXBRL found in {edgar_dir} (looked in {_FORM_DIRS})")
 
     print(f"Primary iXBRL: {primary.relative_to(edgar_dir)}")
 
@@ -230,4 +232,4 @@ def run_flatten(args: argparse.Namespace) -> int:
         if missing:
             print(f"Warning: Expected linkbases not found: {missing}")
 
-    return 0
+    return ExitCode.SUCCESS

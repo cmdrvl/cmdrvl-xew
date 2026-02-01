@@ -12,6 +12,7 @@ from urllib.parse import urljoin, urlparse
 from .artifacts import ArtifactCollectionError, ArtifactHash, collect_artifacts, create_pack_directory_structure, compute_pack_layout
 from . import __version__
 from .comparator import comparator_policy, ComparatorPolicy
+from .exit_codes import ExitCode, exit_invocation_error, exit_processing_error
 from .taxonomy import NonRedistributableReference, non_redistributable_reference_from_path
 from .util import FileHash, sha256_file, utc_now_iso, write_json
 from .findings import FindingsWriter
@@ -325,7 +326,7 @@ def _validate_pack_args(args: argparse.Namespace) -> None:
     if errors:
         error_msg = "Pack command validation failed:\n" + "\n".join(f"  • {error}" for error in errors)
         error_msg += "\n\nRun 'cmdrvl-xew pack --help' for usage information."
-        raise SystemExit(error_msg)
+        exit_invocation_error(error_msg)
 
     # Validate and normalize individual arguments
     validation_errors = []
@@ -385,7 +386,7 @@ def _validate_pack_args(args: argparse.Namespace) -> None:
     if validation_errors:
         error_msg = "Pack command validation failed:\n" + "\n".join(f"  • {error}" for error in validation_errors)
         error_msg += "\n\nEnsure all arguments are properly formatted and files exist."
-        raise SystemExit(error_msg)
+        exit_invocation_error(error_msg)
 
 
 def run_pack(args: argparse.Namespace) -> int:
@@ -395,9 +396,9 @@ def run_pack(args: argparse.Namespace) -> int:
     out_dir = Path(args.out)
     if out_dir.exists():
         if not out_dir.is_dir():
-            raise SystemExit(f"Output path exists and is not a directory: {out_dir}")
+            exit_invocation_error(f"Output path exists and is not a directory: {out_dir}")
         if any(out_dir.iterdir()):
-            raise SystemExit(f"Refusing to write into non-empty directory: {out_dir}")
+            exit_invocation_error(f"Refusing to write into non-empty directory: {out_dir}")
     else:
         out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -421,13 +422,13 @@ def run_pack(args: argparse.Namespace) -> int:
     # Collect and copy artifacts into the pack.
     primary_src = Path(args.primary).resolve()
     if not primary_src.is_file():
-        raise SystemExit(f"Primary artifact not found: {primary_src}")
+        exit_invocation_error(f"Primary artifact not found: {primary_src}")
 
     root_dir = primary_src.parent
     try:
         collected = collect_artifacts(primary_src, root_dir=root_dir)
     except ArtifactCollectionError as e:
-        raise SystemExit(str(e))
+        exit_processing_error(str(e))
 
     primary_dst_rel = Path("artifacts") / "primary.html"
     pack_artifacts: list[ArtifactHash] = []
@@ -461,7 +462,7 @@ def run_pack(args: argparse.Namespace) -> int:
             continue
 
         if dest_rel_str in seen_paths:
-            raise SystemExit(f"Artifact path collision in pack: {dest_rel_str}")
+            exit_processing_error(f"Artifact path collision in pack: {dest_rel_str}")
         seen_paths.add(dest_rel_str)
 
         dest_abs = out_dir / dest_rel
@@ -480,17 +481,17 @@ def run_pack(args: argparse.Namespace) -> int:
     comparator_primary_dst_rel = None
     if args.comparator_accession:
         if not args.comparator_primary_document_url or not args.comparator_primary_artifact_path:
-            raise SystemExit("Comparator requires --comparator-primary-document-url and --comparator-primary-artifact-path")
+            exit_invocation_error("Comparator requires --comparator-primary-document-url and --comparator-primary-artifact-path")
 
         comparator_src = Path(args.comparator_primary_artifact_path).resolve()
         if not comparator_src.is_file():
-            raise SystemExit(f"Comparator primary artifact not found: {comparator_src}")
+            exit_invocation_error(f"Comparator primary artifact not found: {comparator_src}")
 
         comparator_root = comparator_src.parent
         try:
             comparator_collected = collect_artifacts(comparator_src, root_dir=comparator_root)
         except ArtifactCollectionError as e:
-            raise SystemExit(str(e))
+            exit_processing_error(str(e))
 
         comparator_primary_dst_rel = Path("artifacts") / "comparator_primary.html"
         comparator_base_url = _derive_base_url(args.comparator_primary_document_url)
@@ -521,7 +522,7 @@ def run_pack(args: argparse.Namespace) -> int:
                 continue
 
             if dest_rel_str in seen_paths:
-                raise SystemExit(f"Artifact path collision in pack: {dest_rel_str}")
+                exit_processing_error(f"Artifact path collision in pack: {dest_rel_str}")
             seen_paths.add(dest_rel_str)
 
             dest_abs = out_dir / dest_rel
@@ -622,7 +623,7 @@ def run_pack(args: argparse.Namespace) -> int:
 
     if args.comparator_accession:
         if comparator_primary_dst_rel is None:
-            raise SystemExit("Comparator artifacts not collected")
+            exit_processing_error("Comparator artifacts not collected")
 
         # Build base comparator metadata
         comparator_info = {
@@ -785,7 +786,7 @@ def run_pack(args: argparse.Namespace) -> int:
     manifest_data = manifest_builder.build_manifest()
     write_json(out_dir / "pack_manifest.json", manifest_data)
 
-    return 0
+    return ExitCode.SUCCESS
 
 
 def _manifest_role_for_path(path: str) -> str:
@@ -899,10 +900,10 @@ def _validate_comparator_policy(form: str, comparator_provided: bool) -> Compara
     try:
         policy = comparator_policy(form)
     except ValueError as e:
-        raise SystemExit(f"Unsupported form type: {e}")
+        exit_invocation_error(f"Unsupported form type: {e}")
 
     if policy.comparator_required and not comparator_provided:
-        raise SystemExit(
+        exit_invocation_error(
             f"Form {form} requires a comparator filing per policy: {policy.notes}. "
             f"Provide --comparator-accession, --comparator-primary-document-url, "
             f"and --comparator-primary-artifact-path."

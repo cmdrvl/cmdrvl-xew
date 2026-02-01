@@ -169,6 +169,19 @@ These markers are not alerts by themselves. They are context signals derived fro
 
 Marker ID format: `XEW-M###` (XBRL Early Warning Marker).
 
+Marker output payload (recorded in `xew_findings.json`):
+- `marker_id`: marker identifier (e.g., `XEW-M002`)
+- `boundary`: `from_accession` → `to_accession` where the change-point is detected
+- `evidence`: structured fields used to justify the marker (counts, ratios, thresholds, sample identifiers)
+- Any numeric thresholds used must be recorded (and also captured in toolchain config) for reproducibility.
+
+Suggested `evidence` fields (v1 planning):
+- `metric`: name of the measured change (e.g., `extension_concept_churn`)
+- `from_value` / `to_value`: numeric values on each side of the boundary
+- `delta` or `ratio`: computed change across the boundary
+- `threshold`: numeric threshold used to trigger the marker
+- `sample_accessions`: short list of accession IDs used to compute the change
+
 ### XEW-M001: Taxonomy Refresh Event
 - Signal: schemaRef/taxonomy package references change materially vs the prior comparable filing.
 - Interpretation: filer/vendor may have performed a taxonomy refresh; follow-on structural changes are plausible.

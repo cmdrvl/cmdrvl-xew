@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
+from .exit_codes import ExitCode
 from .fetch import run_fetch
 from .flatten import run_flatten
 from .pack import run_pack
@@ -361,7 +362,7 @@ def main(argv: list[str] | None = None) -> int:
         if validation_errors:
             for error in validation_errors:
                 print(f"Error: {error}", file=sys.stderr)
-            return 1
+            return ExitCode.CONFIG_ERROR
         return run_pack(args)
     if args.cmd == "verify-pack":
         # Validate verify-pack command arguments
@@ -369,13 +370,13 @@ def main(argv: list[str] | None = None) -> int:
         if validation_errors:
             for error in validation_errors:
                 print(f"Error: {error}", file=sys.stderr)
-            return 1
+            return ExitCode.CONFIG_ERROR
         return run_verify_pack(args)
     if args.cmd == "fetch":
         return run_fetch(args)
 
     p.error(f"unknown command: {args.cmd}")
-    return 2
+    return ExitCode.CONFIG_ERROR
 
 
 if __name__ == "__main__":

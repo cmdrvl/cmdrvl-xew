@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from typing import NamedTuple
 
+from .exit_codes import ExitCode
 from .util import sha256_file
 
 
@@ -31,9 +32,9 @@ def run_verify_pack(args: argparse.Namespace) -> int:
     Verify an Evidence Pack with configurable verbosity and validation options.
 
     Returns:
-        0: Verification successful
-        1: Configuration/argument error
-        2: Verification failed
+        ExitCode.SUCCESS (0): Verification successful
+        ExitCode.CONFIG_ERROR (1): Configuration/argument error
+        ExitCode.PROCESSING_ERROR (3): Verification failed
     """
     pack_dir = Path(args.pack)
     quiet = getattr(args, 'quiet', False)
@@ -64,24 +65,24 @@ def run_verify_pack(args: argparse.Namespace) -> int:
     manifest_path = pack_dir / "pack_manifest.json"
     if not manifest_path.is_file():
         log_error(f"Evidence Pack missing required pack_manifest.json: {manifest_path}")
-        return 2
+        return ExitCode.PROCESSING_ERROR
 
     try:
         log_info(f"Loading manifest: {manifest_path}")
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except Exception as e:
         log_error(f"Failed to parse pack_manifest.json: {e}")
-        return 2
+        return ExitCode.PROCESSING_ERROR
 
     expected_pack_sha256 = manifest.get("pack_sha256")
     files = manifest.get("files")
 
     if not expected_pack_sha256 or not isinstance(expected_pack_sha256, str):
         log_error("pack_manifest.json missing or invalid pack_sha256 field")
-        return 2
+        return ExitCode.PROCESSING_ERROR
     if not files or not isinstance(files, list):
         log_error("pack_manifest.json missing or invalid files[] field")
-        return 2
+        return ExitCode.PROCESSING_ERROR
 
     log_info(f"Manifest contains {len(files)} file entries")
 
@@ -100,7 +101,7 @@ def run_verify_pack(args: argparse.Namespace) -> int:
             error_count += 1
             log_error(f"Invalid manifest entry #{i}: missing path/sha256/bytes: {f}")
             if fail_fast:
-                return 2
+                return ExitCode.PROCESSING_ERROR
             continue
 
         abs_path = pack_dir / rel
@@ -108,7 +109,7 @@ def run_verify_pack(args: argparse.Namespace) -> int:
             error_count += 1
             log_error(f"File missing from Evidence Pack: {rel}")
             if fail_fast:
-                return 2
+                return ExitCode.PROCESSING_ERROR
             continue
 
         # Check file exists and basic properties
@@ -118,13 +119,13 @@ def run_verify_pack(args: argparse.Namespace) -> int:
                 error_count += 1
                 log_error(f"File size mismatch: {rel}: expected {exp_bytes} bytes, got {file_size}")
                 if fail_fast:
-                    return 2
+                    return ExitCode.PROCESSING_ERROR
                 continue
         except OSError as e:
             error_count += 1
             log_error(f"Cannot access file: {rel}: {e}")
             if fail_fast:
-                return 2
+                return ExitCode.PROCESSING_ERROR
             continue
 
         # Hash verification (skip if check_only mode)
@@ -140,7 +141,7 @@ def run_verify_pack(args: argparse.Namespace) -> int:
                 error_count += 1
                 log_error(f"SHA256 mismatch: {rel}: expected {exp_sha}, got {sha}")
                 if fail_fast:
-                    return 2
+                    return ExitCode.PROCESSING_ERROR
             else:
                 log_info(f"SHA256 verified: {rel}")
             files_checked += 1
@@ -148,7 +149,7 @@ def run_verify_pack(args: argparse.Namespace) -> int:
             error_count += 1
             log_error(f"Failed to compute hash for {rel}: {e}")
             if fail_fast:
-                return 2
+                return ExitCode.PROCESSING_ERROR
 
     # Step 3: Verify pack-level SHA256 (skip if check_only mode)
     if not check_only:
@@ -158,7 +159,7 @@ def run_verify_pack(args: argparse.Namespace) -> int:
             error_count += 1
             log_error(f"Evidence Pack SHA256 mismatch: expected {expected_pack_sha256}, got {calc_pack_sha256}")
             if fail_fast:
-                return 2
+                return ExitCode.PROCESSING_ERROR
         else:
             log_success(f"Evidence Pack SHA256 verified: {calc_pack_sha256}")
 
@@ -167,7 +168,7 @@ def run_verify_pack(args: argparse.Namespace) -> int:
     error_count += tc_errors
     warning_count += tc_warnings
     if tc_errors and fail_fast:
-        return 2
+        return ExitCode.PROCESSING_ERROR
 
     # Step 5: Schema validation if requested
     if getattr(args, 'validate_schema', False):
@@ -179,7 +180,7 @@ def run_verify_pack(args: argparse.Namespace) -> int:
             else:
                 error_count += 1
                 if fail_fast:
-                    return 2
+                    return ExitCode.PROCESSING_ERROR
 
     # Step 6: Final status report
     if not quiet or verbose:
@@ -197,10 +198,10 @@ def run_verify_pack(args: argparse.Namespace) -> int:
     if error_count == 0:
         if not quiet:
             print("✓ Evidence Pack verification PASSED")
-        return 0
+        return ExitCode.SUCCESS
     else:
         log_error(f"Evidence Pack verification FAILED ({error_count} errors)")
-        return 2
+        return ExitCode.PROCESSING_ERROR
 
 
 class SchemaValidationResult(NamedTuple):
