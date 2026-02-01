@@ -548,7 +548,25 @@ def run_pack(args: argparse.Namespace) -> int:
             )
 
     history_metadata: list[dict[str, str]] = []
+
+    # Build history_entries from individual CLI args if not already present
+    # (Needed when run_pack called directly without CLI validation)
     history_entries = getattr(args, "history_entries", None) or []
+    if not history_entries:
+        history_accessions = getattr(args, "history_accession", None) or []
+        history_urls = getattr(args, "history_primary_document_url", None) or []
+        history_paths = getattr(args, "history_primary_artifact_path", None) or []
+
+        if history_accessions and history_urls and history_paths:
+            if len(history_accessions) == len(history_urls) == len(history_paths):
+                for accession, url, path in zip(history_accessions, history_urls, history_paths):
+                    history_entries.append({
+                        "accession": accession.strip(),
+                        "primary_document_url": url.strip(),
+                        "primary_artifact_path": str(Path(path).resolve()),
+                    })
+                # Sort for deterministic processing
+                history_entries.sort(key=lambda item: item["accession"])
     for entry in history_entries:
         history_accession = _normalize_accession(entry["accession"])
         history_primary_url = entry["primary_document_url"]

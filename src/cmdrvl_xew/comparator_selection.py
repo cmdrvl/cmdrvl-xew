@@ -8,11 +8,41 @@ The selection follows form-specific policies and ensures reproducible results.
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, List, NamedTuple, Optional
+from typing import Dict, Iterable, List, NamedTuple, Optional, Tuple
 
-from .comparator import comparator_policy
+from .comparator import comparator_policy, select_prior_accession
 from .util import validate_accession_number
+
+_DEFAULT_HISTORY_WINDOW = 5
+
+
+def _entry_identity(entry: Dict[str, str]) -> Tuple[str, str, str]:
+    return (
+        entry.get("accession", ""),
+        entry.get("primary_document_url", ""),
+        entry.get("primary_artifact_path", ""),
+    )
+
+
+def _entry_sort_key(entry: Dict[str, str]) -> Tuple[str, str, str]:
+    return _entry_identity(entry)
+
+
+def _filter_history_entries(
+    history_entries: Iterable[Dict[str, str]],
+    current_accession: str,
+) -> List[Dict[str, str]]:
+    current_norm = validate_accession_number(current_accession)
+    filtered: List[Dict[str, str]] = []
+    for entry in history_entries:
+        accession = entry.get("accession", "")
+        try:
+            normalized = validate_accession_number(accession)
+        except ValueError:
+            continue
+        if normalized < current_norm:
+            filtered.append(entry)
+    return filtered
 
 
 class SelectionResult(NamedTuple):
@@ -34,7 +64,7 @@ class ComparatorSelector:
         self,
         explicit_comparator: Optional[Dict[str, str]],
         history_entries: List[Dict[str, str]],
-        filed_date: str
+        current_accession: str,
     ) -> SelectionResult:
         """
         Select the best comparator and history window for marker detection.
@@ -42,7 +72,7 @@ class ComparatorSelector:
         Args:
             explicit_comparator: User-provided comparator (takes priority)
             history_entries: Available history entries sorted by accession
-            filed_date: Target filing date (YYYY-MM-DD format)
+            current_accession: Target filing accession (NNNNNNNNNN-NN-NNNNNN)
 
         Returns:
             SelectionResult with selected comparator, history window, and metadata
@@ -53,19 +83,20 @@ class ComparatorSelector:
             selected_comparator = explicit_comparator
             selection_reason = "explicit_user_provided"
         elif self.policy.comparator_required and history_entries:
-            selected_comparator = self._select_best_comparator(history_entries, filed_date)
+            selected_comparator = self._select_best_comparator(history_entries, current_accession)
             selection_reason = "auto_selected_from_history" if selected_comparator else "no_suitable_comparator"
         else:
             selected_comparator = None
             selection_reason = "not_required_by_policy" if not self.policy.comparator_required else "no_history_provided"
 
         # Step 2: Determine history window for marker analysis
-        history_window = self._select_history_window(history_entries, selected_comparator)
+        history_window = self._select_history_window(history_entries, current_accession, selected_comparator)
 
         # Step 3: Build selection metadata
+        valid_history_count = len(_filter_history_entries(history_entries, current_accession))
         selection_metadata = {
             "selection_reason": selection_reason,
-            "comparator_count_available": str(len(history_entries)),
+            "comparator_count_available": str(valid_history_count),
             "history_window_size": str(len(history_window)),
             "policy_required": str(self.policy.comparator_required),
             "base_form": self.policy.base_form,
@@ -80,51 +111,50 @@ class ComparatorSelector:
             selection_metadata=selection_metadata
         )
 
-    def _select_best_comparator(self, history_entries: List[Dict[str, str]], filed_date: str) -> Optional[Dict[str, str]]:
+    def _select_best_comparator(
+        self,
+        history_entries: List[Dict[str, str]],
+        current_accession: str,
+    ) -> Optional[Dict[str, str]]:
         """
         Select the best comparator from available history entries.
 
         Selection criteria (in priority order):
         1. Must be same base form type (policy compliance)
-        2. Must be chronologically prior to target filing date
+        2. Must be chronologically prior to target filing accession
         3. Prefer most recent filing (closest to target date)
         4. Deterministic tie-breaking by accession number
         """
         if not history_entries:
             return None
 
-        # Filter to valid comparators based on form policy
-        valid_comparators = []
-        target_date = datetime.strptime(filed_date, "%Y-%m-%d").date()
-
-        for entry in history_entries:
-            # For now, assume all history entries are valid comparators
-            # In a real implementation, we'd need to extract form type from each entry
-            # and validate it matches the required base form
-
-            # Extract filing date from accession (CCCCCCCCCC-YY-NNNNNN format)
-            accession = entry["accession"]
-            try:
-                validate_accession_number(accession)
-                # Extract year from accession (positions 11-12 are YY)
-                accession_year = 2000 + int(accession[11:13])
-                # For proper comparison, we'd need the full filing date
-                # For now, use a simplified chronological check
-                if accession < filed_date.replace("-", ""):  # Simplified date comparison
-                    valid_comparators.append(entry)
-            except (ValueError, IndexError):
-                continue  # Skip invalid accessions
-
-        if not valid_comparators:
+        candidate_accession = select_prior_accession(
+            current_accession,
+            (entry.get("accession", "") for entry in history_entries),
+        )
+        if not candidate_accession:
             return None
 
-        # Sort by accession (most recent first, deterministic)
-        valid_comparators.sort(key=lambda x: x["accession"], reverse=True)
-        return valid_comparators[0]
+        valid_entries: List[Dict[str, str]] = []
+        for entry in history_entries:
+            accession = entry.get("accession", "")
+            try:
+                normalized = validate_accession_number(accession)
+            except ValueError:
+                continue
+            if normalized == candidate_accession:
+                valid_entries.append(entry)
+
+        if not valid_entries:
+            return None
+
+        valid_entries.sort(key=_entry_sort_key)
+        return valid_entries[0]
 
     def _select_history_window(
         self,
         history_entries: List[Dict[str, str]],
+        current_accession: str,
         selected_comparator: Optional[Dict[str, str]]
     ) -> List[Dict[str, str]]:
         """
@@ -136,28 +166,28 @@ class ComparatorSelector:
         3. Limited to reasonable window size for performance
         """
         # For marker analysis, include up to 5 most recent filings
-        MAX_HISTORY_WINDOW = 5
+        filtered_history = _filter_history_entries(history_entries, current_accession)
 
-        # Start with all available history, sorted by accession (most recent first)
-        sorted_history = sorted(history_entries, key=lambda x: x["accession"], reverse=True)
-
-        # Limit to reasonable window size
-        history_window = sorted_history[:MAX_HISTORY_WINDOW]
+        # Start with most recent history entries, deterministically ordered
+        sorted_history = sorted(filtered_history, key=_entry_sort_key, reverse=True)
+        history_window = sorted_history[:_DEFAULT_HISTORY_WINDOW]
 
         # Ensure selected comparator is included if it exists
-        if selected_comparator and selected_comparator not in history_window:
-            # If comparator is not in the top N, include it anyway
-            history_window = [selected_comparator] + history_window[:MAX_HISTORY_WINDOW-1]
+        if selected_comparator:
+            comparator_id = _entry_identity(selected_comparator)
+            existing_ids = {_entry_identity(entry) for entry in history_window}
+            if comparator_id not in existing_ids:
+                history_window = history_window + [selected_comparator]
 
         # Return in chronological order (oldest first) for consistent processing
-        return sorted(history_window, key=lambda x: x["accession"])
+        return sorted(history_window, key=_entry_sort_key)
 
 
 def select_comparator_and_history(
     form: str,
     explicit_comparator: Optional[Dict[str, str]],
     history_entries: List[Dict[str, str]],
-    filed_date: str
+    current_accession: str,
 ) -> SelectionResult:
     """
     Convenience function for comparator and history selection.
@@ -166,10 +196,10 @@ def select_comparator_and_history(
         form: Target filing form type (e.g., "10-K", "10-Q")
         explicit_comparator: User-provided comparator (takes priority)
         history_entries: Available history entries sorted by accession
-        filed_date: Target filing date (YYYY-MM-DD format)
+        current_accession: Target filing accession (NNNNNNNNNN-NN-NNNNNN)
 
     Returns:
         SelectionResult with selected comparator, history window, and metadata
     """
     selector = ComparatorSelector(form)
-    return selector.select_comparator_and_history(explicit_comparator, history_entries, filed_date)
+    return selector.select_comparator_and_history(explicit_comparator, history_entries, current_accession)

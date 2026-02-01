@@ -505,9 +505,16 @@ class DetectorRegistry:
             package = importlib.import_module(package_path)
             package_dir = Path(package.__file__).parent
 
-            # Look for detector modules (p001_*.py, p002_*.py, etc.)
+            # Look for detector modules (p001_*.py, p002_*.py, m001_*.py, etc.)
             detector_modules = []
+            # Pattern detectors: p001, p002, etc.
             for module_file in package_dir.glob("p[0-9][0-9][0-9]_*.py"):
+                module_name = module_file.stem
+                full_module_name = f"{package_path}.{module_name}"
+                detector_modules.append(full_module_name)
+
+            # Marker detectors: m001, m002, etc.
+            for module_file in package_dir.glob("m[0-9][0-9][0-9]_*.py"):
                 module_name = module_file.stem
                 full_module_name = f"{package_path}.{module_name}"
                 detector_modules.append(full_module_name)
