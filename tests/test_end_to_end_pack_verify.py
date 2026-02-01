@@ -11,6 +11,7 @@ Validates integration of all pipeline components including recent fixes.
 """
 
 import argparse
+import hashlib
 import json
 import tempfile
 import unittest
@@ -223,6 +224,61 @@ class TestEndToEndPackVerify(unittest.TestCase):
         print(f"✅ Deterministic test passed:")
         print(f"   Pack SHA256: {manifest1['pack_sha256']}")
         print(f"   File count: {len(manifest1['files'])}")
+
+    def test_pack_hash_stability_regression(self):
+        """Regression test: ensure pack and findings bytes are stable across runs."""
+
+        pack_dir_1 = self.output_dir / "test_hash_pack_1"
+        pack_dir_2 = self.output_dir / "test_hash_pack_2"
+
+        base_args = {
+            "pack_id": "test-hash-pack",
+            "primary": str(self.primary_file),
+            "issuer_name": "Test Company Inc.",
+            "cik": "0001234567",
+            "accession": "0001234567-25-000001",
+            "form": "8-K",
+            "filed_date": "2025-01-31",
+            "period_end": "2025-01-31",
+            "primary_document_url": "https://www.sec.gov/Archives/edgar/data/1234567/000123456725000001/test_filing.htm",
+            "comparator_accession": None,
+            "comparator_primary_document_url": None,
+            "comparator_primary_artifact_path": None,
+            "history_accession": None,
+            "history_primary_document_url": None,
+            "history_primary_artifact_path": None,
+            "retrieved_at": "2025-01-31T12:00:00Z",
+            "arelle_version": "1.2.3-test",
+            "resolution_mode": "offline_preferred",
+            "derive_artifact_urls": False
+        }
+
+        for pack_dir in (pack_dir_1, pack_dir_2):
+            pack_args = argparse.Namespace(out=str(pack_dir), **base_args)
+            try:
+                result = run_pack(pack_args)
+                self.assertEqual(result, 0, "Pack generation should succeed")
+            except SystemExit as e:
+                self.assertEqual(e.code, 0, f"Pack generation failed with exit code {e.code}")
+
+        def _hash_file(path: Path) -> str:
+            return hashlib.sha256(path.read_bytes()).hexdigest()
+
+        manifest_hash_1 = _hash_file(pack_dir_1 / "pack_manifest.json")
+        manifest_hash_2 = _hash_file(pack_dir_2 / "pack_manifest.json")
+        self.assertEqual(
+            manifest_hash_1,
+            manifest_hash_2,
+            "pack_manifest.json bytes should be identical across runs"
+        )
+
+        findings_hash_1 = _hash_file(pack_dir_1 / "xew_findings.json")
+        findings_hash_2 = _hash_file(pack_dir_2 / "xew_findings.json")
+        self.assertEqual(
+            findings_hash_1,
+            findings_hash_2,
+            "xew_findings.json bytes should be identical across runs"
+        )
 
     def test_pack_with_history_window(self):
         """Test pack generation with history window (tests recent fixes)."""
