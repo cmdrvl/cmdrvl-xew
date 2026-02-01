@@ -10,6 +10,7 @@ from urllib.parse import urljoin, urlparse
 
 from .artifacts import ArtifactCollectionError, ArtifactHash, collect_artifacts
 from . import __version__
+from .comparator import comparator_policy, ComparatorPolicy
 from .taxonomy import NonRedistributableReference, non_redistributable_reference_from_path
 from .util import FileHash, sha256_file, utc_now_iso, write_json
 
@@ -59,6 +60,10 @@ def run_pack(args: argparse.Namespace) -> int:
 
     cik = _normalize_cik(args.cik)
     accession = _normalize_accession(args.accession)
+
+    # Validate comparator policy compliance
+    comparator_provided = bool(args.comparator_accession)
+    comparator_policy_result = _validate_comparator_policy(args.form, comparator_provided)
 
     # Collect and copy artifacts into the pack.
     primary_src = Path(args.primary).resolve()
@@ -123,6 +128,13 @@ def run_pack(args: argparse.Namespace) -> int:
         "arelle_version": args.arelle_version or "unknown",
         "config": {
             "resolution_mode": args.resolution_mode,
+        },
+        "comparator_policy": {
+            "form": args.form,
+            "base_form": comparator_policy_result.base_form,
+            "comparator_required": comparator_policy_result.comparator_required,
+            "comparator_provided": comparator_provided,
+            "policy_notes": comparator_policy_result.notes,
         },
     }
     write_json(out_dir / toolchain_path_rel, toolchain_obj)
@@ -318,6 +330,43 @@ def _create_non_redistributable_reference(artifact: ArtifactHash, source_url: st
         content_type=content_type,
         notes=f"Artifact {artifact.path} cannot be redistributed due to legal/licensing constraints"
     )
+
+
+def _validate_comparator_policy(form: str, comparator_provided: bool) -> ComparatorPolicy:
+    """
+    Validate that comparator usage aligns with form-specific policy.
+
+    Args:
+        form: Filing form type (e.g., "10-Q", "20-F/A", "8-K")
+        comparator_provided: Whether comparator arguments were provided
+
+    Returns:
+        ComparatorPolicy for the form
+
+    Raises:
+        SystemExit: If comparator usage violates form policy
+    """
+    try:
+        policy = comparator_policy(form)
+    except ValueError as e:
+        raise SystemExit(f"Unsupported form type: {e}")
+
+    if policy.comparator_required and not comparator_provided:
+        raise SystemExit(
+            f"Form {form} requires a comparator filing per policy: {policy.notes}. "
+            f"Provide --comparator-accession, --comparator-primary-document-url, "
+            f"and --comparator-primary-artifact-path."
+        )
+
+    if not policy.comparator_required and comparator_provided:
+        # This is a warning, not an error - allow optional comparators
+        import logging
+        logging.warning(
+            f"Form {form} does not typically require a comparator ({policy.notes}), "
+            f"but one was provided and will be included."
+        )
+
+    return policy
 
 
 def _derive_base_url(primary_url: str) -> str | None:

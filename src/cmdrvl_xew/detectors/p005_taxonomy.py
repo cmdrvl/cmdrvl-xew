@@ -299,7 +299,7 @@ class TaxonomyInconsistencyDetector(BaseDetector):
     def _create_instance(self, inconsistency: Dict[str, Any],
                         schema_refs: List[Dict[str, Any]],
                         fact_namespaces: Set[str],
-                        context: DetectorContext) -> DetectorInstance | None:
+                        context: DetectorContext) -> Optional[DetectorInstance]:
         """Create a detector instance from a taxonomy inconsistency."""
         try:
             issue_code = inconsistency['issue_code']
