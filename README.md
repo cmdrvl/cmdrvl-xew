@@ -67,6 +67,12 @@ Optional schema validation during pack verification:
 pip install -e '.[jsonschema]'
 ```
 
+Run tests:
+
+```bash
+PYTHONPATH=src python3 -m unittest discover -s tests
+```
+
 ### Flatten EDGAR Directories (artifact prep)
 
 `flatten` normalizes EDGAR’s typed directory structure into a flat layout that Arelle can load.
