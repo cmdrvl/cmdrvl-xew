@@ -42,7 +42,11 @@ class DetectorRegistry:
         instance = detector_class()
         pattern_id = instance.pattern_id
 
-        if pattern_id in self._detector_classes:
+        existing_class = self._detector_classes.get(pattern_id)
+        if existing_class is detector_class:
+            self.logger.debug(f"Detector already registered for {pattern_id}")
+            return
+        if existing_class is not None:
             self.logger.warning(f"Overwriting existing detector for {pattern_id}")
 
         self._detector_classes[pattern_id] = detector_class
