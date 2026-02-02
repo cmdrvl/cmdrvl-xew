@@ -221,9 +221,45 @@ class TestEndToEndPackVerify(unittest.TestCase):
         files2 = {f["path"]: f["sha256"] for f in manifest2["files"]}
         self.assertEqual(files1, files2, "File hashes should be identical across runs")
 
-        print(f"✅ Deterministic test passed:")
-        print(f"   Pack SHA256: {manifest1['pack_sha256']}")
-        print(f"   File count: {len(manifest1['files'])}")
+    def test_pack_history_entry_missing_accession(self):
+        """Test that missing history accession fails gracefully."""
+        pack_dir = self.output_dir / "test_pack_missing_history"
+
+        bad_history_entries = [
+            {
+                "primary_document_url": "https://www.sec.gov/Archives/edgar/data/1234567/000123456725000001/test_filing.htm",
+                "primary_artifact_path": str(self.primary_file),
+            }
+        ]
+
+        pack_args = argparse.Namespace(
+            pack_id="test-missing-history-accession",
+            out=str(pack_dir),
+            primary=str(self.primary_file),
+            issuer_name="Test Company Inc.",
+            cik="0001234567",
+            accession="0001234567-25-000001",
+            form="8-K",
+            filed_date="2025-01-31",
+            period_end="2025-01-31",
+            primary_document_url="https://www.sec.gov/Archives/edgar/data/1234567/000123456725000001/test_filing.htm",
+            comparator_accession=None,
+            comparator_primary_document_url=None,
+            comparator_primary_artifact_path=None,
+            history_accession=None,
+            history_primary_document_url=None,
+            history_primary_artifact_path=None,
+            history_entries=bad_history_entries,
+            retrieved_at="2025-01-31T12:00:00Z",
+            arelle_version="1.2.3-test",
+            resolution_mode="offline_preferred",
+            derive_artifact_urls=False
+        )
+
+        with self.assertRaises(SystemExit) as ctx:
+            run_pack(pack_args)
+
+        self.assertEqual(ctx.exception.code, 2, "Missing history accession should raise invocation error")
 
     def test_pack_hash_stability_regression(self):
         """Regression test: ensure pack and findings bytes are stable across runs."""

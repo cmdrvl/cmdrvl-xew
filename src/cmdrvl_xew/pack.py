@@ -477,6 +477,34 @@ def _history_primary_paths(history_window: list[dict[str, str]], out_dir: Path) 
     return entries
 
 
+def _normalize_history_entry(entry: dict[str, str], idx: int) -> dict[str, str]:
+    if not isinstance(entry, dict):
+        exit_invocation_error(f"History entry #{idx} must be an object")
+
+    raw_accession = entry.get("accession")
+    if not raw_accession:
+        exit_invocation_error(f"History entry #{idx} missing accession")
+
+    try:
+        accession = _normalize_accession(raw_accession)
+    except ValueError as e:
+        exit_invocation_error(f"History entry #{idx} invalid accession {raw_accession!r}: {e}")
+
+    primary_document_url = entry.get("primary_document_url")
+    if not primary_document_url:
+        exit_invocation_error(f"History entry {accession} missing primary_document_url")
+
+    primary_artifact_path = entry.get("primary_artifact_path")
+    if not primary_artifact_path:
+        exit_invocation_error(f"History entry {accession} missing primary_artifact_path")
+
+    return {
+        "accession": accession,
+        "primary_document_url": primary_document_url.strip(),
+        "primary_artifact_path": str(Path(primary_artifact_path).resolve()),
+    }
+
+
 def _extract_duplicate_signature_ids(findings: list) -> list[str]:
     signature_ids: list[str] = []
     for finding in findings:
@@ -929,10 +957,16 @@ def run_pack(args: argparse.Namespace) -> int:
                         "primary_document_url": url.strip(),
                         "primary_artifact_path": str(Path(path).resolve()),
                     })
-                # Sort for deterministic processing
-                history_entries.sort(key=lambda item: item["accession"])
+
+    if history_entries:
+        history_entries = [
+            _normalize_history_entry(entry, idx)
+            for idx, entry in enumerate(history_entries, start=1)
+        ]
+        # Sort for deterministic processing
+        history_entries.sort(key=lambda item: item["accession"])
     for entry in history_entries:
-        history_accession = _normalize_accession(entry["accession"])
+        history_accession = entry["accession"]
         history_primary_url = entry["primary_document_url"]
         history_primary_src = Path(entry["primary_artifact_path"]).resolve()
         if not history_primary_src.is_file():

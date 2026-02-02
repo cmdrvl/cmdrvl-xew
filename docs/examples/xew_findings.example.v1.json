@@ -6,7 +6,38 @@
     "cmdrvl_xew_version": "dev",
     "arelle_version": "dev",
     "config": {
-      "resolution_mode": "offline_preferred"
+      "resolution_mode": "offline_preferred",
+      "marker_thresholds": {
+        "XEW-M001": {
+          "min_change_count": 1,
+          "min_change_ratio": 0.2,
+          "min_previous_count": 1
+        },
+        "XEW-M002": {
+          "min_churn_ratio": 0.25,
+          "min_new_count": 5,
+          "min_retired_count": 5,
+          "min_previous_count": 10
+        },
+        "XEW-M003": {
+          "min_coverage_increase": 0.2,
+          "min_anchored_increase_count": 10,
+          "min_previous_extension_count": 25
+        },
+        "XEW-M004": {
+          "min_context_count_change_ratio": 0.4,
+          "min_context_count_change": 25,
+          "min_previous_context_count": 50,
+          "min_dim_member_churn_ratio": 0.4,
+          "min_dim_member_churn_count": 10,
+          "min_previous_dim_member_count": 25
+        },
+        "XEW-M005": {
+          "min_drop_ratio": 0.5,
+          "min_drop_count": 10,
+          "min_previous_count": 20
+        }
+      }
     }
   },
   "input": {
@@ -113,11 +144,5 @@
         ]
       }
     }
-  ],
-  "repro": {
-    "steps": [
-      "Verify sha256 of artifacts/primary.html matches the artifacts[] entry.",
-      "Run the same toolchain versions recorded in toolchain/."
-    ]
-  }
+  ]
 }

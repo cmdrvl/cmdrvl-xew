@@ -86,11 +86,12 @@ Flatten flags:
 - Required: `edgar_dir` (positional), `--out`
 - Optional: `--force`
 
-### Fetch EDGAR Accession Artifacts (planned; not yet implemented)
+### Fetch EDGAR Accession Artifacts
 
-Note: `cmdrvl-xew fetch` is not implemented in the CLI yet. This section documents the intended interface for a future EDGAR-driven mode.
+`fetch` downloads EDGAR accession artifacts into a flat directory suitable for `pack`.
+It enforces SEC access policies by requiring a descriptive `--user-agent` with contact info.
 
-Planned interface (not yet implemented):
+Example:
 ```bash
 cmdrvl-xew fetch \
   --cik 0000123456 \
@@ -100,13 +101,14 @@ cmdrvl-xew fetch \
 ```
 
 Notes:
-- When implemented, `--user-agent` will be required to comply with SEC access policies.
+- `--user-agent` must include contact info (email/URL/phone) for SEC compliance.
+- `--min-interval` controls request pacing (default: 0.2s).
 - The output directory must be empty unless `--force` is used.
-- This is an EDGAR-driven convenience mode; artifact-driven `pack` remains the default.
+- `fetch` prints the selected primary HTML filename; use that for `--primary` in `pack`.
 
 Fetch flags:
-- Required (planned): `--cik`, `--accession`, `--out`, `--user-agent`
-- Optional (planned): `--min-interval`, `--force`
+- Required: `--cik`, `--accession`, `--out`, `--user-agent`
+- Optional: `--min-interval`, `--force`
 
 ### Generate a Pack (artifact-driven)
 
