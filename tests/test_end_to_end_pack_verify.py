@@ -256,8 +256,12 @@ class TestEndToEndPackVerify(unittest.TestCase):
             derive_artifact_urls=False
         )
 
-        with self.assertRaises(SystemExit) as ctx:
-            run_pack(pack_args)
+        import io
+        from contextlib import redirect_stderr
+
+        with io.StringIO() as buf, redirect_stderr(buf):
+            with self.assertRaises(SystemExit) as ctx:
+                run_pack(pack_args)
 
         self.assertEqual(ctx.exception.code, 2, "Missing history accession should raise invocation error")
 
