@@ -210,6 +210,10 @@ __marimo__/
 # cmdrvl-xew output
 XEW-EP-*/
 
+# Local tool state (do not commit)
+.beads/
+.ntm/
+
 # Local sample filings (do not commit real filings)
 sample/
 

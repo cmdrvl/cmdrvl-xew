@@ -437,11 +437,13 @@ def run_arelle_install_packages(args: argparse.Namespace) -> int:
 
     if urls:
         download_dir.mkdir(parents=True, exist_ok=True)
-        from .sec_policy import SECRequestConfig
-
-        user_agent = (getattr(args, "user_agent", None) or "").strip()
+        user_agent = (
+            getattr(args, "user_agent", None)
+            or os.environ.get("XEW_USER_AGENT")
+            or ""
+        ).strip()
         if not user_agent:
-            user_agent = SECRequestConfig(application_version=__version__).get_user_agent()
+            exit_invocation_error("--user-agent is required when using --url downloads (or set XEW_USER_AGENT).")
 
         # Align with EDGAR fetch rules: require contact info to avoid default/bot UAs.
         try:
@@ -509,10 +511,8 @@ def run_arelle_install_packages(args: argparse.Namespace) -> int:
     try:
         from arelle import Cntlr, PackageManager  # type: ignore
 
-        from .sec_policy import SECRequestConfig
-
         cntlr = Cntlr.Cntlr(logFileName="logToBuffer")
-        cntlr.webCache.httpUserAgent = user_agent or SECRequestConfig(application_version=__version__).get_user_agent()
+        cntlr.webCache.httpUserAgent = user_agent or f"cmdrvl-xew/{__version__}"
 
         # In command-line mode, Arelle doesn't load taxonomyPackages.json by default.
         # Force loading so addPackage/save reads/writes the expected registry file.

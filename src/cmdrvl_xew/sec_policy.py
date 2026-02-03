@@ -9,6 +9,7 @@ https://www.sec.gov/os/accessing-edgar-data
 
 from __future__ import annotations
 
+import os
 import time
 import urllib.request
 from dataclasses import dataclass, field
@@ -30,8 +31,8 @@ class SECRequestConfig:
     """Configuration for SEC-compliant HTTP requests."""
 
     # User-Agent Requirements (SEC mandates proper identification)
-    company_name: str = "CMD+RVL"
-    contact_email: str = "compliance@cmdrvl.com"
+    company_name: str = ""
+    contact_email: str = ""
     application_name: str = "cmdrvl-xew"
     application_version: str = "1.0"
 
@@ -51,12 +52,20 @@ class SECRequestConfig:
 
     def __post_init__(self):
         """Validate configuration parameters."""
+        if not self.company_name:
+            self.company_name = (os.environ.get("XEW_SEC_COMPANY_NAME") or "").strip()
+        if not self.contact_email:
+            self.contact_email = (os.environ.get("XEW_SEC_CONTACT_EMAIL") or "").strip()
+
         if self.max_requests_per_second <= 0:
             raise ValueError("max_requests_per_second must be positive")
         if self.request_delay_seconds < 0:
             raise ValueError("request_delay_seconds cannot be negative")
         if not self.company_name or not self.contact_email:
-            raise ValueError("company_name and contact_email are required for SEC compliance")
+            raise ValueError(
+                "company_name and contact_email are required for SEC compliance. "
+                "Pass them explicitly or set XEW_SEC_COMPANY_NAME and XEW_SEC_CONTACT_EMAIL."
+            )
 
         # Ensure delay matches rate limit
         if self.max_requests_per_second > 0:

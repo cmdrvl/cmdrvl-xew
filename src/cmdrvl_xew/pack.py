@@ -267,10 +267,16 @@ def _load_xbrl_model_with_arelle(
     os.environ["XDG_CONFIG_HOME"] = str(xdg_home)
 
     try:
-        from .sec_policy import SECRequestConfig
+        from .edgar_fetch import _validate_user_agent  # type: ignore
 
         controller = Cntlr.Cntlr(logFileName="logToBuffer")
-        controller.webCache.httpUserAgent = SECRequestConfig(application_version=__version__).get_user_agent()
+        user_agent = (os.environ.get("XEW_USER_AGENT") or "").strip()
+        if user_agent:
+            try:
+                _validate_user_agent(user_agent)
+            except Exception as e:
+                exit_invocation_error(str(e))
+        controller.webCache.httpUserAgent = user_agent or f"cmdrvl-xew/{__version__}"
 
         # In command-line mode, Arelle does not load taxonomyPackages.json by default.
         # Force loading so offline resolution can use registered taxonomy packages.
@@ -298,10 +304,19 @@ def _load_xbrl_model_with_arelle(
         if mode == "offline_preferred":
             try:
                 return _load(True)
-            except Exception:
+            except Exception as offline_exc:
+                if not user_agent:
+                    raise RuntimeError(
+                        "Arelle offline resolution failed and online fallback is disabled because "
+                        "XEW_USER_AGENT is not set. Install taxonomy packages or set XEW_USER_AGENT."
+                    ) from offline_exc
                 return _load(False)
 
         if mode in {"online_only", "hybrid"}:
+            if not user_agent:
+                raise RuntimeError(
+                    "Online Arelle resolution requires XEW_USER_AGENT to be set (SEC-compliant User-Agent)."
+                )
             return _load(False)
 
         # Unknown resolution mode: default to offline_preferred behavior.

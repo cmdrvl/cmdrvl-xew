@@ -244,17 +244,15 @@ Verify flags:
 
 Real filings should not be committed. The local `sample/` folder is gitignored and intended only for ad-hoc testing.
 
-Fetch a small set of representative extracted iXBRL filings from S3:
+Fetch a small set of representative iXBRL filings from SEC EDGAR (requires a SEC-compliant User-Agent string):
 
 ```bash
-scripts/fetch_samples.sh
-
-# Optional overrides
-scripts/fetch_samples.sh --profile edgar-readonly --bucket edgar-data-full --out sample
+export XEW_USER_AGENT="YourOrg your.email@example.com cmdrvl-xew/0.1.0"
+scripts/fetch_samples.sh --out sample
 ```
 
 Included accessions:
-- 10-K: `0000020639-25-010025`
+- 10-K: `0001140361-25-010025`
 - 10-Q: `0000034903-25-000063`
 - 8-K: `0000036104-25-000066`
 

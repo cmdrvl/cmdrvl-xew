@@ -584,9 +584,7 @@ Assumed components:
 - XBRL artifacts staged in object storage (e.g., S3) with lineage/catalog metadata
 - Orchestration (e.g., Airflow) to schedule detection and backfills
 - Delivery (MCP + API) to route alerts + Evidence Packs
-- Product surfaces:
-  - `cmdrvl.com`: hosts the outcome (monitoring + alert delivery + Evidence Pack access)
-  - `kovrex.ai`: hosts an opinionated agent that helps recipients interpret Evidence Packs and draft vendor-friendly handoffs (without inventing facts or giving speculative compliance advice)
+- Product surfaces (outside this repo) that host monitoring, alert delivery, and Evidence Pack access
 
 New build (v1):
 - `cmdrvl-xew`: the CLI engine that turns filing artifacts into `xew_findings.json` + an Evidence Pack directory.

@@ -539,7 +539,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     arelle_install.add_argument(
         "--user-agent",
-        help="User-Agent string for downloads (default: SEC-compliant cmdrvl-xew UA).",
+        help="User-Agent string for downloads (required when using --url; or set XEW_USER_AGENT).",
     )
     arelle_install.add_argument(
         "--min-interval",
