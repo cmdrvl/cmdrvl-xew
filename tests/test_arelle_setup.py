@@ -3,6 +3,7 @@ import os
 import tempfile
 import types
 import unittest
+import tarfile
 import zipfile
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -265,6 +266,106 @@ class TestArelleSetup(unittest.TestCase):
             _cntlr, add_path = calls["add"][0]
             self.assertEqual(Path(add_path).resolve(), (mirror_dir / "META-INF" / "taxonomyPackage.xml").resolve())
             self.assertIn("Mirrored 1 taxonomy directory URL", out.getvalue())
+
+    def test_installs_from_bundle_tarball(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            xdg_home = tmp / "xdg"
+
+            # Build a tiny bundle tarball with one taxonomy .zip and one mirrored directory package.
+            bundle_root = tmp / "bundle" / "xew-arelle"
+            pkg_dir = bundle_root / "arelle" / "taxonomy-packages"
+            pkg_dir.mkdir(parents=True, exist_ok=True)
+
+            zip_path = pkg_dir / "us-gaap-2025.zip"
+            with zipfile.ZipFile(zip_path, "w") as zf:
+                zf.writestr(
+                    "pkg/META-INF/taxonomyPackage.xml",
+                    "<tp:taxonomyPackage xmlns:tp='http://xbrl.org/2016/taxonomy-package'/>",
+                )
+
+            mirror_dir = pkg_dir / "_mirror" / "example.com" / "dei" / "2025" / "META-INF"
+            mirror_dir.mkdir(parents=True, exist_ok=True)
+            (mirror_dir / "taxonomyPackage.xml").write_text(
+                "<tp:taxonomyPackage xmlns:tp='http://xbrl.org/2016/taxonomy-package'/>",
+                encoding="utf-8",
+            )
+
+            bundle_tar = tmp / "bundle.tgz"
+            with tarfile.open(bundle_tar, "w:gz") as tf:
+                tf.add(bundle_root, arcname="xew-arelle")
+
+            calls: dict[str, list] = {"add": [], "rebuild": [], "save": []}
+
+            class FakeWebCache:
+                def __init__(self):
+                    self.httpUserAgent = None
+
+            class FakeCntlrInstance:
+                def __init__(self, *_args, **_kwargs):
+                    self.webCache = FakeWebCache()
+                    self.userAppDir = str(Path(os.environ["XDG_CONFIG_HOME"]) / "arelle")
+
+            class FakeCntlrModule:
+                Cntlr = FakeCntlrInstance
+
+            class FakePackageManager:
+                @staticmethod
+                def init(cntlr, loadPackagesConfig=True):  # noqa: ARG001
+                    calls.setdefault("init", []).append(loadPackagesConfig)
+
+                @staticmethod
+                def addPackage(cntlr, url, packageManifestName=None):  # noqa: ARG001
+                    calls["add"].append((cntlr, url))
+                    return {"name": Path(url).name, "version": "x", "identifier": "fake"}
+
+                @staticmethod
+                def rebuildRemappings(cntlr):  # noqa: ARG001
+                    calls["rebuild"].append(True)
+
+                @staticmethod
+                def save(cntlr):  # noqa: ARG001
+                    calls["save"].append(True)
+
+            fake_arelle = types.ModuleType("arelle")
+            fake_arelle.Cntlr = FakeCntlrModule
+            fake_arelle.PackageManager = FakePackageManager
+
+            args = SimpleNamespace(
+                package=[],
+                url=[],
+                bundle_uri=str(bundle_tar),
+                bundle_sha256=None,
+                aws_profile=None,
+                no_bundle=False,
+                arelle_xdg_config_home=str(xdg_home),
+                force=False,
+            )
+
+            out = io.StringIO()
+            with patch.dict("sys.modules", {"arelle": fake_arelle}):
+                with patch.dict(os.environ, {"XDG_CONFIG_HOME": "prev"}):
+                    with redirect_stdout(out):
+                        rc = run_arelle_install_packages(args)
+                    self.assertEqual(os.environ.get("XDG_CONFIG_HOME"), "prev")
+
+            self.assertEqual(rc, ExitCode.SUCCESS)
+            extracted_zip = xdg_home / "arelle" / "taxonomy-packages" / "us-gaap-2025.zip"
+            extracted_pkg_xml = (
+                xdg_home
+                / "arelle"
+                / "taxonomy-packages"
+                / "_mirror"
+                / "example.com"
+                / "dei"
+                / "2025"
+                / "META-INF"
+                / "taxonomyPackage.xml"
+            )
+            self.assertTrue(extracted_zip.exists())
+            self.assertTrue(extracted_pkg_xml.exists())
+            self.assertEqual(len(calls["add"]), 2)
+            self.assertIn("Bundle source:", out.getvalue())
 
 
 if __name__ == "__main__":

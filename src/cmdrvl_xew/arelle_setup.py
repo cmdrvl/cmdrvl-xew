@@ -4,7 +4,10 @@ import argparse
 import hashlib
 import os
 import re
+import shutil
+import subprocess
 import tempfile
+import tarfile
 import time
 import urllib.request
 from pathlib import Path
@@ -57,6 +60,144 @@ def _normalize_base_url(url: str) -> str:
 
 
 _HREF_RE = re.compile(r'href="([^"]+)"', re.IGNORECASE)
+
+
+def _download_bundle_uri_to_path(
+    uri: str,
+    *,
+    download_dir: Path,
+    aws_profile: str | None,
+    force: bool,
+) -> Path:
+    uri = (uri or "").strip()
+    if not uri:
+        exit_invocation_error("--bundle-uri must not be empty")
+
+    parsed = urlparse(uri)
+    if parsed.scheme == "file":
+        p = Path(parsed.path).expanduser().resolve()
+        if not p.exists():
+            exit_invocation_error(f"Bundle file not found: {p}")
+        return p
+
+    if parsed.scheme in ("http", "https"):
+        filename = _download_filename_from_url(uri)
+        dest = (download_dir / filename).resolve()
+        if dest.exists() and not force:
+            return dest
+        req = urllib.request.Request(uri, headers={"User-Agent": f"cmdrvl-xew/{__version__}"})
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        with urllib.request.urlopen(req) as resp:
+            with dest.open("wb") as f:
+                shutil.copyfileobj(resp, f)
+        return dest
+
+    if uri.startswith("s3://"):
+        filename = Path(uri.rstrip("/")).name or "bundle.tgz"
+        dest = (download_dir / filename).resolve()
+        if dest.exists() and not force:
+            return dest
+        cmd = ["aws"]
+        if aws_profile:
+            cmd.extend(["--profile", aws_profile])
+        cmd.extend(["s3", "cp", "--only-show-errors", uri, str(dest)])
+        try:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            subprocess.run(cmd, check=True)
+        except FileNotFoundError:
+            exit_invocation_error("AWS CLI not found; install `aws` or use a file:// bundle.")
+        except subprocess.CalledProcessError as e:
+            exit_processing_error(f"Failed to download bundle from S3 ({uri}): {e}")
+        return dest
+
+    # Fall back to local filesystem path (relative or absolute).
+    p = Path(uri).expanduser().resolve()
+    if not p.exists():
+        exit_invocation_error(f"Unknown bundle URI (expected s3://, http(s)://, file://, or local path): {uri}")
+    return p
+
+
+def _safe_extract_tarball(tar_path: Path, *, dest_dir: Path, force: bool) -> None:
+    """Extract a tarball into dest_dir, preventing traversal and symlinks.
+
+    If the tar contains a single top-level directory, strip it (so bundles created as
+    `tar -C <parent> -czf bundle.tgz <childdir>` extract cleanly into dest_dir).
+    """
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest_root = dest_dir.resolve()
+
+    with tarfile.open(tar_path, mode="r:*") as tf:
+        members = tf.getmembers()
+
+        top_levels: set[str] = set()
+        for m in members:
+            name = (m.name or "").lstrip("./")
+            if not name or name == ".":
+                continue
+            parts = Path(name).parts
+            if parts:
+                top_levels.add(parts[0])
+        strip_top = next(iter(top_levels)) if len(top_levels) == 1 else None
+
+        for m in members:
+            name = (m.name or "").lstrip("./")
+            if not name or name == ".":
+                continue
+
+            if strip_top and name.startswith(strip_top + "/"):
+                name = name[len(strip_top) + 1 :]
+            if not name:
+                continue
+
+            rel = Path(name)
+            if rel.is_absolute() or ".." in rel.parts:
+                exit_invocation_error(f"Unsafe path in bundle tarball: {m.name}")
+
+            out_path = (dest_root / rel).resolve()
+            if not str(out_path).startswith(str(dest_root) + os.sep) and out_path != dest_root:
+                exit_invocation_error(f"Unsafe extraction target in bundle tarball: {m.name}")
+
+            if m.isdir():
+                out_path.mkdir(parents=True, exist_ok=True)
+                continue
+
+            if m.issym() or m.islnk():
+                exit_invocation_error(f"Refusing to extract symlink from bundle tarball: {m.name}")
+
+            if not m.isreg():
+                exit_invocation_error(f"Unsupported tar entry type in bundle tarball: {m.name}")
+
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            if out_path.exists() and not force:
+                continue
+            src = tf.extractfile(m)
+            if src is None:
+                exit_invocation_error(f"Failed to read tar entry from bundle: {m.name}")
+            with src:
+                with out_path.open("wb") as f:
+                    shutil.copyfileobj(src, f)
+
+
+def _discover_local_taxonomy_packages(download_dir: Path) -> list[Path]:
+    """Discover taxonomy packages under download_dir for registration in Arelle.
+
+    - Includes taxonomy package .zip files in download_dir root.
+    - Includes mirrored directory packages: **/_mirror/**/META-INF/taxonomyPackage.xml
+    """
+    discovered: list[Path] = []
+    if not download_dir.exists():
+        return discovered
+
+    for p in sorted(download_dir.glob("*.zip")):
+        if _is_arelle_taxonomy_package_zip(p):
+            discovered.append(p.resolve())
+
+    mirror_root = download_dir / "_mirror"
+    if mirror_root.exists():
+        for p in sorted(mirror_root.rglob("META-INF/taxonomyPackage.xml")):
+            discovered.append(p.resolve())
+
+    return discovered
 
 
 def _fetch_text(
@@ -239,8 +380,15 @@ def run_arelle_install_packages(args: argparse.Namespace) -> int:
     """
     packages = list(getattr(args, "package", None) or [])
     urls = list(getattr(args, "url", None) or [])
-    if not packages and not urls:
-        exit_invocation_error("At least one --package or --url is required")
+    bundle_uri = (getattr(args, "bundle_uri", None) or "").strip() or None
+    bundle_sha256 = (getattr(args, "bundle_sha256", None) or "").strip() or None
+    aws_profile = (getattr(args, "aws_profile", None) or "").strip() or None
+    no_bundle = bool(getattr(args, "no_bundle", False))
+    if no_bundle:
+        bundle_uri = None
+
+    if not packages and not urls and not bundle_uri:
+        exit_invocation_error("At least one of --bundle-uri, --package, or --url is required")
 
     xdg_home = Path(getattr(args, "arelle_xdg_config_home", None) or _default_arelle_xdg_config_home())
     xdg_home.mkdir(parents=True, exist_ok=True)
@@ -263,6 +411,30 @@ def run_arelle_install_packages(args: argparse.Namespace) -> int:
     downloaded: list[dict] = []
     mirrored: list[dict] = []
     user_agent = ""
+
+    bundle_path: Path | None = None
+    if bundle_uri:
+        bundle_download_dir = xdg_home / "arelle" / "taxonomy-bundles"
+        bundle_path = _download_bundle_uri_to_path(
+            bundle_uri,
+            download_dir=bundle_download_dir,
+            aws_profile=aws_profile,
+            force=force,
+        )
+        if bundle_sha256:
+            digest, _size = sha256_file(bundle_path)
+            if digest.lower() != bundle_sha256.lower():
+                exit_processing_error(
+                    f"Bundle sha256 mismatch: expected {bundle_sha256} got {digest} ({bundle_path})"
+                )
+
+        # If packages already exist and we're not forcing, avoid re-extracting.
+        existing_packages = bool(download_dir.exists() and any(download_dir.iterdir()))
+        if not existing_packages or force:
+            _safe_extract_tarball(bundle_path, dest_dir=xdg_home, force=force)
+
+        package_paths.extend(_discover_local_taxonomy_packages(download_dir))
+
     if urls:
         download_dir.mkdir(parents=True, exist_ok=True)
         from .sec_policy import SECRequestConfig
@@ -318,6 +490,20 @@ def run_arelle_install_packages(args: argparse.Namespace) -> int:
             mirrored.append({"base_url": base_url, "package_dir": package_root, "files": mirror_downloads})
             package_paths.append(Path(catalog_path).resolve())
 
+    # De-dupe paths (keep stable ordering).
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for p in package_paths:
+        k = str(p)
+        if k in seen:
+            continue
+        unique.append(p)
+        seen.add(k)
+    package_paths = unique
+
+    if not package_paths:
+        exit_invocation_error("No taxonomy packages found to install (check bundle contents and --download-dir)")
+
     previous_xdg = os.environ.get("XDG_CONFIG_HOME")
     os.environ["XDG_CONFIG_HOME"] = str(xdg_home)
     try:
@@ -345,6 +531,11 @@ def run_arelle_install_packages(args: argparse.Namespace) -> int:
                         changed = True
                 if changed and hasattr(PackageManager, "packagesConfigChanged"):
                     PackageManager.packagesConfigChanged = True
+
+        if bundle_uri:
+            print(f"Bundle source: {bundle_uri}")
+            if bundle_path:
+                print(f"Bundle file: {bundle_path}")
 
         if downloaded:
             print(f"Downloaded {len(downloaded)} URL file(s) to {download_dir}:")

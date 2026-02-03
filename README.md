@@ -173,11 +173,58 @@ cmdrvl-xew pack ... \
   --arelle-xdg-config-home ~/.cmdrvl-xew/arelle
 ```
 
+#### Using an S3 taxonomy bundle cache (recommended in production)
+
+For production runs, you may want to avoid hitting publisher websites (SEC/FASB) from every job. A practical pattern is:
+
+1) Build a local Arelle taxonomy cache once (using `--url` or local `--package` files)
+2) Bundle that cache into a tarball
+3) Upload to your own S3 bucket
+4) Configure `cmdrvl-xew` to bootstrap the cache from S3
+
+Build the cache (example):
+```bash
+XDG_HOME=~/.cmdrvl-xew/arelle
+
+cmdrvl-xew arelle install-packages \
+  --arelle-xdg-config-home "$XDG_HOME" \
+  --url https://xbrl.fasb.org/us-gaap/2025/us-gaap-2025.zip \
+  --url https://xbrl.fasb.org/srt/2025/srt-2025.zip \
+  --url https://xbrl.sec.gov/dei/2025/ \
+  --url https://xbrl.sec.gov/exch/2025/
+```
+
+Bundle + upload (example, using AWS CLI):
+```bash
+XDG_HOME=~/.cmdrvl-xew/arelle
+tar -C "$(dirname "$XDG_HOME")" -czf xew-arelle-bundle.tgz "$(basename "$XDG_HOME")"
+shasum -a 256 xew-arelle-bundle.tgz
+
+aws s3 cp xew-arelle-bundle.tgz s3://YOUR_BUCKET/xew/arelle-taxonomy-packages/xew-arelle-bundle.tgz
+```
+
+Bootstrap from S3 on a fresh machine/container:
+```bash
+export XEW_ARELLE_BUNDLE_URI=s3://YOUR_BUCKET/xew/arelle-taxonomy-packages/xew-arelle-bundle.tgz
+export XEW_ARELLE_BUNDLE_SHA256=...  # optional, recommended
+export AWS_PROFILE=...               # optional, or use IAM role creds
+
+cmdrvl-xew arelle install-packages --arelle-xdg-config-home ~/.cmdrvl-xew/arelle
+
+cmdrvl-xew pack ... \
+  --resolution-mode offline_only \
+  --arelle-xdg-config-home ~/.cmdrvl-xew/arelle
+```
+
 Notes:
 - You can install from local `--package` files, or use `--url` to download packages before installing.
 - Downloaded packages default to `<XDG_CONFIG_HOME>/arelle/taxonomy-packages` (override with `--download-dir`).
+- To bootstrap from a bundle tarball, set `--bundle-uri` (or `$XEW_ARELLE_BUNDLE_URI`) and optionally `--bundle-sha256`.
 - Always comply with publisher licenses/terms.
 - Using a persistent `--arelle-xdg-config-home` avoids relying on live network fetch during `pack`.
+
+Coverage:
+- A bundle is only as complete as the taxonomy versions you include. A 2020 filing may reference `us-gaap/2020/`, `dei/2020/`, etc. If you run in `offline_only` mode, you must include those versions in your bundle.
 
 ### Verify a Pack
 

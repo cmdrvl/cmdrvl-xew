@@ -446,6 +446,33 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     arelle_install.add_argument(
+        "--bundle-uri",
+        default=os.environ.get("XEW_ARELLE_BUNDLE_URI") or None,
+        help=(
+            "Taxonomy bundle tarball to fetch and unpack before installing packages. "
+            "Supports s3://, http(s)://, file://, or a local path. "
+            "Defaults to $XEW_ARELLE_BUNDLE_URI (if set)."
+        ),
+    )
+    arelle_install.add_argument(
+        "--bundle-sha256",
+        default=os.environ.get("XEW_ARELLE_BUNDLE_SHA256") or None,
+        help=(
+            "Optional sha256 for the bundle tarball (integrity check). "
+            "Defaults to $XEW_ARELLE_BUNDLE_SHA256 (if set)."
+        ),
+    )
+    arelle_install.add_argument(
+        "--aws-profile",
+        default=os.environ.get("AWS_PROFILE") or None,
+        help="AWS profile name to use for s3:// bundle downloads (default: $AWS_PROFILE).",
+    )
+    arelle_install.add_argument(
+        "--no-bundle",
+        action="store_true",
+        help="Do not fetch/unpack the bundle; only install from --package and/or --url.",
+    )
+    arelle_install.add_argument(
         "--package",
         action="append",
         help="Path to a local taxonomy package (.zip) or package directory. Repeatable.",
