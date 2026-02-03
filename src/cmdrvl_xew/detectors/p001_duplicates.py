@@ -100,10 +100,15 @@ class DuplicateFactsDetector(BaseDetector):
                 self.logger.info("No duplicate facts detected")
                 return []
 
-            # Create finding for duplicate facts
+            # Create finding for duplicate facts only when there are value conflicts
             finding = self._create_finding(duplicate_groups, context)
-            self.logger.info(f"Created finding with {len(finding.instances)} instances")
+            if finding is None:
+                self.logger.info(
+                    "Duplicate facts detected but no value conflicts under selected mode; skipping P001 finding"
+                )
+                return []
 
+            self.logger.info(f"Created finding with {len(finding.instances)} instances")
             return [finding]
 
         except Exception as e:
@@ -406,8 +411,10 @@ class DuplicateFactsDetector(BaseDetector):
 
         return ref
 
-    def _create_finding(self, duplicate_groups: Dict[bytes, List[Dict[str, Any]]], context: DetectorContext) -> DetectorFinding:
-        """Create a finding from duplicate fact groups."""
+    def _create_finding(
+        self, duplicate_groups: Dict[bytes, List[Dict[str, Any]]], context: DetectorContext
+    ) -> DetectorFinding | None:
+        """Create a finding from duplicate fact groups (conflicts only)."""
 
         # Generate finding ID
         finding_id = generate_finding_id(context.accession, self.pattern_id)
@@ -418,6 +425,10 @@ class DuplicateFactsDetector(BaseDetector):
             instance = self._create_instance(signature_bytes, facts, context)
             if instance:
                 instances.append(instance)
+
+        # Conflicts-only posture: if no value conflicts, do not emit a finding.
+        if not instances:
+            return None
 
         # Apply deterministic ordering and truncation
         finding_summary = create_finding_summary(
@@ -458,6 +469,10 @@ class DuplicateFactsDetector(BaseDetector):
                 has_conflicts = self._strict_conflicts(facts)
             else:
                 has_conflicts = self._rounded_conflicts(facts)
+
+            # Conflicts-only posture: skip non-conflicting duplicates.
+            if not has_conflicts:
+                return None
 
             # Build fact refs (schema-compatible)
             fact_refs = []

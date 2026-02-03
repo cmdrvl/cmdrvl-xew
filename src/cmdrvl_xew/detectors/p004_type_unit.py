@@ -153,20 +153,17 @@ class TypeUnitNumericDetector(BaseDetector):
 
             # Check decimals attribute issues
             if decimals is not None:
-                try:
-                    decimals_val = int(decimals)
-                    if decimals_val < 0:
+                # XBRL allows signed integers and the special value INF for decimals.
+                decimals_text = str(decimals).strip()
+                if decimals_text and decimals_text.upper() not in {"INF", "INFINITY"}:
+                    try:
+                        int(decimals_text)  # negative values are valid
+                    except (ValueError, TypeError):
                         violations.append({
                             'fact_data': fact_data,
-                            'issue_code': 'negative_decimals',
-                            'description': f"Negative decimals attribute: {decimals_val}"
+                            'issue_code': 'invalid_decimals',
+                            'description': f"Invalid decimals attribute: {decimals}"
                         })
-                except (ValueError, TypeError):
-                    violations.append({
-                        'fact_data': fact_data,
-                        'issue_code': 'invalid_decimals',
-                        'description': f"Invalid decimals attribute: {decimals}"
-                    })
 
             # Check precision attribute issues
             if precision is not None:

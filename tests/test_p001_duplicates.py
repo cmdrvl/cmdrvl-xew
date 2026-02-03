@@ -64,7 +64,7 @@ class TestDuplicateFactsDetector(unittest.TestCase):
         self.assertEqual(len(findings), 0)
 
     def test_duplicate_facts_same_value(self):
-        """Test detection of duplicate facts with same value."""
+        """Test that duplicate facts with the same value are not reported (no conflict)."""
         # Create two facts with identical signature and value
         context = self._create_mock_context(
             entity_scheme="http://www.sec.gov/CIK",
@@ -95,20 +95,7 @@ class TestDuplicateFactsDetector(unittest.TestCase):
         self.mock_context.xbrl_model = xbrl_model
 
         findings = self.detector.detect(self.mock_context)
-
-        self.assertEqual(len(findings), 1)
-        finding = findings[0]
-        self.assertEqual(finding.pattern_id, "XEW-P001")
-
-        # Should have one instance for the duplicate group
-        self.assertEqual(len(finding.instances), 1)
-        instance = finding.instances[0]
-
-        # Check instance data
-        self.assertEqual(instance.data['fact_count'], 2)
-        self.assertEqual(instance.data['concept']['clark'], '{http://fasb.org/us-gaap/2023-01-31}Revenue')
-        self.assertFalse(instance.data['value_conflict'])  # Same values, no conflict
-        self.assertIn("duplicate_fact", instance.data['issue_codes'])
+        self.assertEqual(len(findings), 0)
 
     def test_duplicate_facts_different_values(self):
         """Test detection of duplicate facts with conflicting values."""
@@ -184,10 +171,7 @@ class TestDuplicateFactsDetector(unittest.TestCase):
         self.mock_context.config = {"p001_conflict_mode": "rounded"}
 
         findings = self.detector.detect(self.mock_context)
-        self.assertEqual(len(findings), 1)
-        instance = findings[0].instances[0]
-        self.assertFalse(instance.data["value_conflict"])
-        self.assertNotIn("value_conflict", instance.data["issue_codes"])
+        self.assertEqual(len(findings), 0)
 
     def test_duplicate_facts_strict_mode_flags_rounding_mismatch(self):
         """Test that strict mode flags any numeric mismatch as a conflict."""
@@ -335,7 +319,7 @@ class TestDuplicateFactsDetector(unittest.TestCase):
         self.assertEqual(len(findings), 0)  # Different units = no duplicates
 
     def test_duration_period_duplicates(self):
-        """Test duplicate detection for duration periods."""
+        """Test that duration duplicates with the same value are not reported (no conflict)."""
         context = self._create_mock_context(
             entity_scheme="http://www.sec.gov/CIK",
             entity_identifier="0000123456",
@@ -366,14 +350,10 @@ class TestDuplicateFactsDetector(unittest.TestCase):
         self.mock_context.xbrl_model = xbrl_model
 
         findings = self.detector.detect(self.mock_context)
-
-        self.assertEqual(len(findings), 1)
-        finding = findings[0]
-        instance = finding.instances[0]
-        self.assertEqual(instance.data['fact_count'], 2)
+        self.assertEqual(len(findings), 0)
 
     def test_multiple_duplicate_groups(self):
-        """Test detection when there are multiple groups of duplicates."""
+        """Test that multiple duplicate groups are not reported if there are no conflicts."""
         context1 = self._create_mock_context(
             entity_scheme="http://www.sec.gov/CIK",
             entity_identifier="0000123456",
@@ -402,18 +382,10 @@ class TestDuplicateFactsDetector(unittest.TestCase):
         self.mock_context.xbrl_model = xbrl_model
 
         findings = self.detector.detect(self.mock_context)
-
-        self.assertEqual(len(findings), 1)
-        finding = findings[0]
-
-        # Should have 2 instances (one for each duplicate group)
-        self.assertEqual(len(finding.instances), 2)
-
-        fact_counts = [inst.data['fact_count'] for inst in finding.instances]
-        self.assertEqual(sorted(fact_counts), [2, 2])
+        self.assertEqual(len(findings), 0)
 
     def test_non_numeric_facts(self):
-        """Test duplicate detection for non-numeric facts."""
+        """Test that non-numeric duplicates with identical values are not reported (no conflict)."""
         context = self._create_mock_context(
             entity_scheme="http://www.sec.gov/CIK",
             entity_identifier="0000123456",
@@ -442,11 +414,7 @@ class TestDuplicateFactsDetector(unittest.TestCase):
         self.mock_context.xbrl_model = xbrl_model
 
         findings = self.detector.detect(self.mock_context)
-
-        self.assertEqual(len(findings), 1)
-        finding = findings[0]
-        instance = finding.instances[0]
-        self.assertEqual(instance.data['fact_count'], 2)
+        self.assertEqual(len(findings), 0)
 
     def test_canonical_signature_consistency(self):
         """Test that canonical signatures are generated consistently."""

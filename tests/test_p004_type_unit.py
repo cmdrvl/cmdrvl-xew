@@ -29,6 +29,38 @@ class TestP004TypeUnitDetector(unittest.TestCase):
         findings = self.detector.detect(context)
         self.assertEqual(findings, [])
 
+    def test_negative_decimals_allowed(self):
+        """Negative decimals are valid in XBRL (rounding to thousands, etc.)."""
+        context = self._make_context([
+            self._create_fact(
+                concept_type="monetaryItemType",
+                value="100",
+                is_numeric=True,
+                unit=self._create_unit("USD"),
+                decimals="-3",
+                precision=None,
+            )
+        ])
+
+        findings = self.detector.detect(context)
+        self.assertEqual(findings, [])
+
+    def test_inf_decimals_allowed(self):
+        """INF decimals are valid in XBRL (exact value)."""
+        context = self._make_context([
+            self._create_fact(
+                concept_type="monetaryItemType",
+                value="100",
+                is_numeric=True,
+                unit=self._create_unit("USD"),
+                decimals="INF",
+                precision=None,
+            )
+        ])
+
+        findings = self.detector.detect(context)
+        self.assertEqual(findings, [])
+
     def test_missing_unit_violation(self):
         """Numeric fact without unit should flag missing_unit."""
         context = self._make_context([
