@@ -14,6 +14,7 @@ from .fetch import run_fetch
 from .flatten import run_flatten
 from .pack import run_pack
 from .verify import run_verify_pack
+from .doctor import run_doctor
 
 
 def _load_env_file(path: Path, *, original_env_keys: set[str], override: bool) -> None:
@@ -478,6 +479,15 @@ def main(argv: list[str] | None = None) -> int:
     fetch.add_argument("--min-interval", type=float, default=0.2, help="Minimum seconds between requests (default: 0.2)")
     fetch.add_argument("--force", action="store_true", help="Overwrite existing files in output directory")
 
+    doctor = sub.add_parser("doctor", help="Check environment configuration for deterministic packs")
+    doctor.add_argument(
+        "--arelle-xdg-config-home",
+        help=(
+            "Arelle XDG_CONFIG_HOME to check (defaults to $XEW_ARELLE_XDG_CONFIG_HOME or /tmp/cmdrvl-xew-arelle). "
+            "Use the same path you pass to `cmdrvl-xew arelle install-packages` and `cmdrvl-xew pack`."
+        ),
+    )
+
     arelle = sub.add_parser("arelle", help="Manage Arelle config (taxonomy packages)")
     arelle_sub = arelle.add_subparsers(dest="arelle_cmd", required=True)
 
@@ -576,6 +586,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_verify_pack(args)
     if args.cmd == "fetch":
         return run_fetch(args)
+    if args.cmd == "doctor":
+        return run_doctor(args)
     if args.cmd == "arelle":
         if args.arelle_cmd == "install-packages":
             return run_arelle_install_packages(args)

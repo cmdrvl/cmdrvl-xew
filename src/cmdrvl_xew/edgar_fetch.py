@@ -48,7 +48,9 @@ def cik_dirname(cik: str) -> str:
 
 
 def accession_base_url(cik: str, accession: str) -> str:
-    return f"https://data.sec.gov/Archives/edgar/data/{cik_dirname(cik)}/{accession_no_dashes(accession)}"
+    # SEC EDGAR Archives are hosted under www.sec.gov.
+    # Note: data.sec.gov does not serve the /Archives/ tree.
+    return f"https://www.sec.gov/Archives/edgar/data/{cik_dirname(cik)}/{accession_no_dashes(accession)}"
 
 
 def fetch_accession_items(cik: str, accession: str, *, user_agent: str) -> list[EdgarDirectoryItem]:
@@ -112,8 +114,11 @@ def parse_index_html(text: str) -> list[EdgarDirectoryItem]:
 
 
 def select_primary_html(items: Iterable[EdgarDirectoryItem]) -> EdgarDirectoryItem | None:
+    items_list = list(items)
+    xsd_stems = {Path(item.name).stem for item in items_list if item.name.lower().endswith(".xsd")}
+
     candidates: list[EdgarDirectoryItem] = []
-    for item in items:
+    for item in items_list:
         name_lower = item.name.lower()
         if not name_lower.endswith(_PRIMARY_HTML_SUFFIXES):
             continue
@@ -124,7 +129,17 @@ def select_primary_html(items: Iterable[EdgarDirectoryItem]) -> EdgarDirectoryIt
         candidates.append(item)
     if not candidates:
         return None
-    candidates.sort(key=_primary_sort_key)
+
+    def _sort_key(item: EdgarDirectoryItem) -> tuple[int, int, int, str]:
+        stem = Path(item.name).stem
+        matches_xsd = 0 if stem in xsd_stems else 1
+        looks_like_report = 1 if _looks_like_sec_report_page(item.name) else 0
+        size = item.size if item.size is not None else -1
+        # Prefer an HTML whose basename matches the .xsd; avoid SEC-rendered report pages (R1.htm, etc.);
+        # then prefer largest; tie-break by name for determinism.
+        return (matches_xsd, looks_like_report, -size, item.name)
+
+    candidates.sort(key=_sort_key)
     return candidates[0]
 
 
@@ -179,10 +194,15 @@ def _download(url: str, dest: Path, *, user_agent: str, rate_limiter: RateLimite
         dest.write_bytes(resp.read())
 
 
-def _primary_sort_key(item: EdgarDirectoryItem) -> tuple[int, str]:
-    size = item.size if item.size is not None else -1
-    # Prefer largest HTML file; tie-breaker by name for determinism.
-    return (-size, item.name)
+def _looks_like_sec_report_page(filename: str) -> bool:
+    # SEC often includes generated report pages named like R1.htm, R10.htm, etc.
+    # These are usually not the primary iXBRL document.
+    name = filename.strip()
+    lower = name.lower()
+    if not lower.endswith((".htm", ".html")):
+        return False
+    stem = Path(lower).stem
+    return bool(stem) and stem.startswith("r") and stem[1:].isdigit()
 
 
 def _coerce_int(value: object) -> int | None:

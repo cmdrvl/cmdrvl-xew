@@ -136,7 +136,7 @@ Notes:
 - The output directory must not exist (or must be empty).
 - `pack` copies the primary HTML to `artifacts/primary.html` and includes local schema/linkbase artifacts referenced by the primary document (and its schema). External taxonomy references are skipped (not bundled).
 - For periodic forms (10-Q/10-K/20-F), providing a comparator enables comparator-based markers; running without one is allowed but those markers may be skipped.
-- Findings are populated when detectors run successfully; if the XBRL model cannot be loaded, the pack will emit empty findings with warnings (use `--require-arelle` to fail fast instead).
+- Packs are only meaningful when Arelle loads a real XBRL model. For production use, install taxonomy packages and run `cmdrvl-xew doctor`, then use `--require-arelle`.
 - `--p001-conflict-mode` controls how XEW-P001 flags numeric value conflicts: `rounded` (default) tolerates rounding-consistent duplicates; `strict` flags any mismatch.
 
 Pack flags:
@@ -162,6 +162,7 @@ cmdrvl-xew arelle install-packages \
 cmdrvl-xew arelle install-packages \
   --arelle-xdg-config-home ~/.cmdrvl-xew/arelle \
   --download-dir ~/.cmdrvl-xew/taxonomy-packages \
+  --user-agent "YourOrg your.email@example.com cmdrvl-xew/0.1.0" \
   --url https://xbrl.fasb.org/us-gaap/2025/us-gaap-2025.zip \
   --url https://xbrl.fasb.org/srt/2025/srt-2025.zip \
   --url https://xbrl.sec.gov/dei/2025/ \
@@ -169,8 +170,17 @@ cmdrvl-xew arelle install-packages \
 
 # Then run pack using the same config home, offline-only:
 cmdrvl-xew pack ... \
+  --require-arelle \
   --resolution-mode offline_only \
   --arelle-xdg-config-home ~/.cmdrvl-xew/arelle
+```
+
+### Check your environment (doctor)
+
+Before running `pack`, verify that Arelle is installed and taxonomy packages are present:
+
+```bash
+cmdrvl-xew doctor --arelle-xdg-config-home ~/.cmdrvl-xew/arelle
 ```
 
 #### Using an S3 taxonomy bundle cache (recommended in production)
@@ -188,6 +198,7 @@ XDG_HOME=~/.cmdrvl-xew/arelle
 
 cmdrvl-xew arelle install-packages \
   --arelle-xdg-config-home "$XDG_HOME" \
+  --user-agent "YourOrg your.email@example.com cmdrvl-xew/0.1.0" \
   --url https://xbrl.fasb.org/us-gaap/2025/us-gaap-2025.zip \
   --url https://xbrl.fasb.org/srt/2025/srt-2025.zip \
   --url https://xbrl.sec.gov/dei/2025/ \
@@ -210,8 +221,10 @@ export XEW_ARELLE_BUNDLE_SHA256=...  # optional, recommended
 export AWS_PROFILE=...               # optional, or use IAM role creds
 
 cmdrvl-xew arelle install-packages --arelle-xdg-config-home ~/.cmdrvl-xew/arelle
+cmdrvl-xew doctor --arelle-xdg-config-home ~/.cmdrvl-xew/arelle
 
 cmdrvl-xew pack ... \
+  --require-arelle \
   --resolution-mode offline_only \
   --arelle-xdg-config-home ~/.cmdrvl-xew/arelle
 ```
