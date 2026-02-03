@@ -6,7 +6,7 @@ Purpose
 
 Scope
 - This runbook covers artifact-driven reproduction using `cmdrvl-xew pack` and `cmdrvl-xew verify-pack`.
-- EDGAR fetch mode is not implemented in the CLI yet.
+- EDGAR-driven fetching is available via `cmdrvl-xew fetch` (SEC-compliant User-Agent required).
 
 ## 1) Prerequisites
 
@@ -66,7 +66,7 @@ cmdrvl-xew pack \
 ```
 
 Optional (when applicable):
-- `--issuer-name`, `--period-end`, `--arelle-version`, `--resolution-mode`, `--derive-artifact-urls`
+- `--issuer-name`, `--period-end`, `--arelle-version`, `--resolution-mode`, `--p001-conflict-mode`, `--derive-artifact-urls`
 - History window and comparator arguments (see section 2)
 
 ## 5) Verify the pack

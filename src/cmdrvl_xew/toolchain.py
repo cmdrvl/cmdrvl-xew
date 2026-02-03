@@ -99,13 +99,18 @@ class ToolchainRecorder:
             return self._cached_versions["arelle_version"]
 
         try:
-            # Try to import arelle and get version
-            import arelle
-            if hasattr(arelle, '__version__'):
-                version = arelle.__version__
-            elif hasattr(arelle, 'Version'):
-                version = getattr(arelle.Version, 'version', 'unknown')
-            else:
+            # Try to import arelle and get version (arelle-release exposes version via arelle.Version.version)
+            import arelle  # type: ignore
+
+            version = getattr(arelle, "__version__", None)
+            if not version:
+                try:
+                    from arelle import Version as arelle_version  # type: ignore
+                    version = getattr(arelle_version, "version", None) or getattr(arelle_version, "__version__", None)
+                except Exception:
+                    version = None
+
+            if not version:
                 version = "unknown"
 
             self._cached_versions["arelle_version"] = version

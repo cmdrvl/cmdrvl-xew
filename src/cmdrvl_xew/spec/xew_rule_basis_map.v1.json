@@ -113,7 +113,7 @@
           "citation": "Section 4.6.3 - Decimals and Precision Attributes",
           "notes": "Facts cannot specify both decimals and precision attributes simultaneously.",
           "retrieved_at": "2026-01-31T14:32:00Z",
-          "sha256": "c3d4e5f6789012345678901234567890123456789012345678901234567890a1b2",
+          "sha256": "0aabd01fa4c77b41e7d2aeac2845f872e53871edcffad96fc99e72ba6555501f",
           "source": "XBRL_SPEC",
           "url": "https://www.xbrl.org/specification/XBRL-2.1/REC-2003-12-31/XBRL-2.1-REC-2003-12-31+corrected-errata-2013-02-20.html"
         }
@@ -127,7 +127,7 @@
           "citation": "Section 4.6.3 - Decimals and Precision Attributes",
           "notes": "Decimals attribute must be a valid integer or 'INF'.",
           "retrieved_at": "2026-01-31T14:32:00Z",
-          "sha256": "c3d4e5f6789012345678901234567890123456789012345678901234567890a1b2",
+          "sha256": "0aabd01fa4c77b41e7d2aeac2845f872e53871edcffad96fc99e72ba6555501f",
           "source": "XBRL_SPEC",
           "url": "https://www.xbrl.org/specification/XBRL-2.1/REC-2003-12-31/XBRL-2.1-REC-2003-12-31+corrected-errata-2013-02-20.html"
         }
@@ -141,7 +141,7 @@
           "citation": "Section 4.6.3 - Decimals and Precision Attributes",
           "notes": "Precision attribute must be a positive integer.",
           "retrieved_at": "2026-01-31T14:32:00Z",
-          "sha256": "c3d4e5f6789012345678901234567890123456789012345678901234567890a1b2",
+          "sha256": "0aabd01fa4c77b41e7d2aeac2845f872e53871edcffad96fc99e72ba6555501f",
           "source": "XBRL_SPEC",
           "url": "https://www.xbrl.org/specification/XBRL-2.1/REC-2003-12-31/XBRL-2.1-REC-2003-12-31+corrected-errata-2013-02-20.html"
         }
@@ -155,7 +155,7 @@
           "citation": "Section 4.6.1 - Numeric Items",
           "notes": "Numeric facts must specify a unitRef attribute referencing a declared unit.",
           "retrieved_at": "2026-01-31T14:32:00Z",
-          "sha256": "d4e5f6789012345678901234567890123456789012345678901234567890a1b2c3",
+          "sha256": "0aabd01fa4c77b41e7d2aeac2845f872e53871edcffad96fc99e72ba6555501f",
           "source": "XBRL_SPEC",
           "url": "https://www.xbrl.org/specification/XBRL-2.1/REC-2003-12-31/XBRL-2.1-REC-2003-12-31+corrected-errata-2013-02-20.html"
         }
@@ -169,7 +169,7 @@
           "citation": "Section 4.6.1 - Numeric Items",
           "notes": "Non-numeric facts cannot specify unitRef, decimals, or precision attributes.",
           "retrieved_at": "2026-01-31T14:32:00Z",
-          "sha256": "d4e5f6789012345678901234567890123456789012345678901234567890a1b2c3",
+          "sha256": "0aabd01fa4c77b41e7d2aeac2845f872e53871edcffad96fc99e72ba6555501f",
           "source": "XBRL_SPEC",
           "url": "https://www.xbrl.org/specification/XBRL-2.1/REC-2003-12-31/XBRL-2.1-REC-2003-12-31+corrected-errata-2013-02-20.html"
         }
@@ -211,7 +211,7 @@
           "citation": "Section 3.2 - Schema References",
           "notes": "Schema references (schemaRef href) must match the namespaces actually used in facts and contexts.",
           "retrieved_at": "2026-01-31T14:32:00Z",
-          "sha256": "789012345678901234567890123456789012345678901234567890a1b2c3d4e5f6",
+          "sha256": "0aabd01fa4c77b41e7d2aeac2845f872e53871edcffad96fc99e72ba6555501f",
           "source": "XBRL_SPEC",
           "url": "https://www.xbrl.org/specification/XBRL-2.1/REC-2003-12-31/XBRL-2.1-REC-2003-12-31+corrected-errata-2013-02-20.html"
         }

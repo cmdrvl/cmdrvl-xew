@@ -2,6 +2,8 @@
 Unit tests for XEW-P001 duplicate facts detector.
 """
 
+from __future__ import annotations
+
 import unittest
 from unittest.mock import Mock, MagicMock
 from typing import List, Dict, Any
@@ -147,6 +149,84 @@ class TestDuplicateFactsDetector(unittest.TestCase):
         self.assertEqual(instance.data['fact_count'], 2)
         self.assertTrue(instance.data['value_conflict'])  # Different values = conflict
         self.assertIn("value_conflict", instance.data['issue_codes'])
+
+    def test_duplicate_facts_rounded_values_not_conflict(self):
+        """Test that rounding-consistent numeric values are not conflicts by default."""
+        context = self._create_mock_context(
+            entity_scheme="http://www.sec.gov/CIK",
+            entity_identifier="0000123456",
+            period_type="instant",
+            instant_date="2023-12-31"
+        )
+        unit = self._create_mock_unit("USD")
+
+        facts = [
+            self._create_mock_fact(
+                concept="gaap:Revenue",
+                context=context,
+                value="14176000",
+                is_numeric=True,
+                unit=unit,
+                decimals="-3",
+            ),
+            self._create_mock_fact(
+                concept="gaap:Revenue",
+                context=context,
+                value="14200000",
+                is_numeric=True,
+                unit=unit,
+                decimals="-5",
+            ),
+        ]
+
+        xbrl_model = self._create_mock_xbrl_model(facts)
+        self.mock_context.xbrl_model = xbrl_model
+        self.mock_context.config = {"p001_conflict_mode": "rounded"}
+
+        findings = self.detector.detect(self.mock_context)
+        self.assertEqual(len(findings), 1)
+        instance = findings[0].instances[0]
+        self.assertFalse(instance.data["value_conflict"])
+        self.assertNotIn("value_conflict", instance.data["issue_codes"])
+
+    def test_duplicate_facts_strict_mode_flags_rounding_mismatch(self):
+        """Test that strict mode flags any numeric mismatch as a conflict."""
+        context = self._create_mock_context(
+            entity_scheme="http://www.sec.gov/CIK",
+            entity_identifier="0000123456",
+            period_type="instant",
+            instant_date="2023-12-31"
+        )
+        unit = self._create_mock_unit("USD")
+
+        facts = [
+            self._create_mock_fact(
+                concept="gaap:Revenue",
+                context=context,
+                value="14176000",
+                is_numeric=True,
+                unit=unit,
+                decimals="-3",
+            ),
+            self._create_mock_fact(
+                concept="gaap:Revenue",
+                context=context,
+                value="14200000",
+                is_numeric=True,
+                unit=unit,
+                decimals="-5",
+            ),
+        ]
+
+        xbrl_model = self._create_mock_xbrl_model(facts)
+        self.mock_context.xbrl_model = xbrl_model
+        self.mock_context.config = {"p001_conflict_mode": "strict"}
+
+        findings = self.detector.detect(self.mock_context)
+        self.assertEqual(len(findings), 1)
+        instance = findings[0].instances[0]
+        self.assertTrue(instance.data["value_conflict"])
+        self.assertIn("value_conflict", instance.data["issue_codes"])
 
     def test_duplicate_facts_different_periods(self):
         """Test that facts with different periods are not considered duplicates."""
@@ -429,8 +509,16 @@ class TestDuplicateFactsDetector(unittest.TestCase):
             self.assertIn('citation', rule)
             self.assertIn('url', rule)
 
-    def _create_mock_fact(self, concept: str, context: Mock, value: str,
-                         is_numeric: bool, unit: Mock = None) -> Mock:
+    def _create_mock_fact(
+        self,
+        concept: str,
+        context: Mock,
+        value: str,
+        is_numeric: bool,
+        unit: Mock = None,
+        decimals: str | None = None,
+        precision: str | None = None,
+    ) -> Mock:
         """Create a mock fact with given properties."""
         fact = Mock()
 
@@ -456,6 +544,8 @@ class TestDuplicateFactsDetector(unittest.TestCase):
         fact.context = context
         fact.unit = unit
         fact.isNumeric = is_numeric
+        fact.decimals = decimals
+        fact.precision = precision
 
         return fact
 

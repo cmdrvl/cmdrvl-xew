@@ -2,9 +2,10 @@
 Unit tests for XEW-P005 taxonomy inconsistency detector.
 """
 
+import tempfile
 import unittest
-from unittest.mock import Mock, MagicMock
-from typing import List, Dict, Any
+from pathlib import Path
+from unittest.mock import Mock
 
 from cmdrvl_xew.detectors.p005_taxonomy import TaxonomyInconsistencyDetector
 from cmdrvl_xew.detectors._base import DetectorContext
@@ -16,8 +17,17 @@ class TestTaxonomyInconsistencyDetector(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures."""
         self.detector = TaxonomyInconsistencyDetector()
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root_dir = Path(self.temp_dir.name)
+        self.primary_path = self.root_dir / "primary.htm"
+
         self.mock_context = Mock(spec=DetectorContext)
         self.mock_context.accession = "0000123456-23-000001"  # Valid EDGAR accession format
+        self.mock_context.primary_document_path = str(self.primary_path)
+        self.mock_context.artifacts_dir = str(self.root_dir)
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
 
     def test_pattern_properties(self):
         """Test basic pattern properties."""
@@ -27,12 +37,14 @@ class TestTaxonomyInconsistencyDetector(unittest.TestCase):
 
     def test_no_inconsistencies(self):
         """Test when there are no taxonomy inconsistencies."""
-        # Create mock XBRL model with consistent schema refs and namespaces
+        self._write_primary(schema_refs=["ext.xsd"])
+        self._write_schema(
+            "ext.xsd",
+            target_namespace="http://example.com/ext",
+            imports=["http://example.com/gaap"],
+        )
         xbrl_model = self._create_mock_xbrl_model(
-            schema_refs=[
-                {'href': 'http://example.com/gaap.xsd', 'namespace': 'http://example.com/gaap'}
-            ],
-            fact_namespaces=['http://example.com/gaap']
+            fact_namespaces=["http://example.com/ext", "http://example.com/gaap"]
         )
         self.mock_context.xbrl_model = xbrl_model
 
@@ -41,11 +53,18 @@ class TestTaxonomyInconsistencyDetector(unittest.TestCase):
 
     def test_unreferenced_namespace(self):
         """Test detection of namespaces used in facts but not declared in schemaRef."""
+        self._write_primary(schema_refs=["ext.xsd"])
+        self._write_schema(
+            "ext.xsd",
+            target_namespace="http://example.com/ext",
+            imports=["http://example.com/gaap"],
+        )
         xbrl_model = self._create_mock_xbrl_model(
-            schema_refs=[
-                {'href': 'http://example.com/gaap.xsd', 'namespace': 'http://example.com/gaap'}
-            ],
-            fact_namespaces=['http://example.com/gaap', 'http://example.com/undeclared']
+            fact_namespaces=[
+                "http://example.com/ext",
+                "http://example.com/gaap",
+                "http://example.com/undeclared",
+            ]
         )
         self.mock_context.xbrl_model = xbrl_model
 
@@ -64,37 +83,31 @@ class TestTaxonomyInconsistencyDetector(unittest.TestCase):
         self.assertTrue(len(mismatch_instances) > 0)
 
     def test_unused_schema_ref(self):
-        """Test detection of schemaRef declared but not used in facts."""
+        """Unused imported namespaces should not trigger findings."""
+        self._write_primary(schema_refs=["ext.xsd"])
+        self._write_schema(
+            "ext.xsd",
+            target_namespace="http://example.com/ext",
+            imports=["http://example.com/gaap", "http://example.com/unused"],
+        )
         xbrl_model = self._create_mock_xbrl_model(
-            schema_refs=[
-                {'href': 'http://example.com/gaap.xsd', 'namespace': 'http://example.com/gaap'},
-                {'href': 'http://example.com/unused.xsd', 'namespace': 'http://example.com/unused'}
-            ],
-            fact_namespaces=['http://example.com/gaap']
+            fact_namespaces=["http://example.com/ext", "http://example.com/gaap"]
         )
         self.mock_context.xbrl_model = xbrl_model
 
         findings = self.detector.detect(self.mock_context)
-
-        self.assertEqual(len(findings), 1)
-        finding = findings[0]
-
-        # Check that namespace/schema ref mismatch issue is detected
-        instance_data = [inst.data for inst in finding.instances]
-        mismatch_instances = [
-            inst for inst in instance_data
-            if inst['issue_code'] == 'namespace_schema_ref_mismatch'
-        ]
-        self.assertTrue(len(mismatch_instances) > 0)
+        self.assertEqual(len(findings), 0)
 
     def test_duplicate_schema_ref(self):
         """Test that duplicate schemaRef elements for same namespace don't trigger false positives."""
+        self._write_primary(schema_refs=["ext.xsd", "ext.xsd"])
+        self._write_schema(
+            "ext.xsd",
+            target_namespace="http://example.com/ext",
+            imports=["http://example.com/gaap"],
+        )
         xbrl_model = self._create_mock_xbrl_model(
-            schema_refs=[
-                {'href': 'http://example.com/gaap1.xsd', 'namespace': 'http://example.com/gaap'},
-                {'href': 'http://example.com/gaap2.xsd', 'namespace': 'http://example.com/gaap'}
-            ],
-            fact_namespaces=['http://example.com/gaap']
+            fact_namespaces=["http://example.com/ext", "http://example.com/gaap"]
         )
         self.mock_context.xbrl_model = xbrl_model
 
@@ -107,61 +120,37 @@ class TestTaxonomyInconsistencyDetector(unittest.TestCase):
 
     def test_malformed_schema_ref(self):
         """Test detection of malformed schemaRef href."""
-        xbrl_model = self._create_mock_xbrl_model(
-            schema_refs=[
-                {'href': 'http://example.com/gaap.xsd', 'namespace': 'http://example.com/gaap'},
-                {'href': '', 'namespace': 'http://example.com/malformed'}  # Empty href
-            ],
-            fact_namespaces=['http://example.com/gaap']
-        )
+        # Empty href should be ignored and must not cause a false positive.
+        self._write_primary(schema_refs=[""])
+        xbrl_model = self._create_mock_xbrl_model(fact_namespaces=["http://example.com/gaap"])
         self.mock_context.xbrl_model = xbrl_model
 
         findings = self.detector.detect(self.mock_context)
-
-        self.assertEqual(len(findings), 1)
-        finding = findings[0]
-
-        # Check that namespace/schema ref mismatch is detected (covers malformed/unused cases)
-        instance_data = [inst.data for inst in finding.instances]
-        mismatch_instances = [
-            inst for inst in instance_data
-            if inst['issue_code'] == 'namespace_schema_ref_mismatch'
-        ]
-        # Should detect namespace/schema ref mismatches
-        self.assertTrue(len(mismatch_instances) > 0)
+        self.assertEqual(len(findings), 0)
 
     def test_schema_ref_mismatch(self):
-        """Test detection of href/namespace mismatches."""
-        xbrl_model = self._create_mock_xbrl_model(
-            schema_refs=[
-                {'href': 'http://different.com/schema.xsd', 'namespace': 'http://example.com/gaap'}
-            ],
-            fact_namespaces=['http://example.com/gaap']
-        )
+        """External schemaRefs are ignored for declared namespace extraction."""
+        self._write_primary(schema_refs=["https://example.com/ext.xsd"])
+        xbrl_model = self._create_mock_xbrl_model(fact_namespaces=["http://example.com/ext"])
         self.mock_context.xbrl_model = xbrl_model
 
         findings = self.detector.detect(self.mock_context)
-
-        if findings:  # Mismatch detection is heuristic-based, so may not always trigger
-            finding = findings[0]
-            instance_data = [inst.data for inst in finding.instances]
-            mismatch_instances = [
-                inst for inst in instance_data
-                if inst['issue_code'] in ['namespace_schema_ref_mismatch', 'mixed_taxonomy_versions']
-            ]
-            # If detected, should be flagged as a mismatch of some kind
-            if mismatch_instances:
-                self.assertTrue(len(mismatch_instances) > 0)
+        self.assertEqual(len(findings), 0)
 
     def test_multiple_inconsistencies(self):
         """Test when multiple types of inconsistencies are present."""
+        self._write_primary(schema_refs=["ext.xsd"])
+        self._write_schema(
+            "ext.xsd",
+            target_namespace="http://example.com/ext",
+            imports=["http://example.com/gaap"],
+        )
         xbrl_model = self._create_mock_xbrl_model(
-            schema_refs=[
-                {'href': 'http://example.com/gaap.xsd', 'namespace': 'http://example.com/gaap'},
-                {'href': 'http://example.com/unused.xsd', 'namespace': 'http://example.com/unused'},
-                {'href': '', 'namespace': 'http://example.com/malformed'}
-            ],
-            fact_namespaces=['http://example.com/gaap', 'http://example.com/undeclared']
+            fact_namespaces=[
+                "http://example.com/ext",
+                "http://example.com/gaap",
+                "http://example.com/undeclared",
+            ]
         )
         self.mock_context.xbrl_model = xbrl_model
 
@@ -180,11 +169,14 @@ class TestTaxonomyInconsistencyDetector(unittest.TestCase):
 
     def test_canonical_signature_consistency(self):
         """Test that canonical signatures are generated consistently."""
+        self._write_primary(schema_refs=["ext.xsd"])
+        self._write_schema(
+            "ext.xsd",
+            target_namespace="http://example.com/ext",
+            imports=["http://example.com/gaap"],
+        )
         xbrl_model = self._create_mock_xbrl_model(
-            schema_refs=[
-                {'href': 'http://example.com/gaap.xsd', 'namespace': 'http://example.com/gaap'}
-            ],
-            fact_namespaces=['http://example.com/undeclared']
+            fact_namespaces=["http://example.com/ext", "http://example.com/undeclared"]
         )
         self.mock_context.xbrl_model = xbrl_model
 
@@ -208,6 +200,12 @@ class TestTaxonomyInconsistencyDetector(unittest.TestCase):
         xbrl_model.modelDocument = None
         xbrl_model.facts = []
         self.mock_context.xbrl_model = xbrl_model
+        self._write_primary(schema_refs=["ext.xsd"])
+        self._write_schema(
+            "ext.xsd",
+            target_namespace="http://example.com/ext",
+            imports=["http://example.com/gaap"],
+        )
 
         findings = self.detector.detect(self.mock_context)
         self.assertEqual(len(findings), 0)
@@ -237,25 +235,26 @@ class TestTaxonomyInconsistencyDetector(unittest.TestCase):
             self.assertIsInstance(rule, dict)
             # Note: Different detectors use different field names (citation vs title)
 
-    def _create_mock_xbrl_model(self, schema_refs: List[Dict[str, str]],
-                               fact_namespaces: List[str]) -> Mock:
-        """Create a mock XBRL model with given schema refs and fact namespaces."""
+    def _write_primary(self, *, schema_refs: list[str]) -> None:
+        refs = "".join(f'<link:schemaRef xlink:href="{href}"/>' for href in schema_refs)
+        self.primary_path.write_text(f"<html>{refs}</html>", encoding="utf-8")
+
+    def _write_schema(self, filename: str, *, target_namespace: str, imports: list[str]) -> None:
+        imports_xml = "".join(
+            f'<xs:import namespace="{ns}" schemaLocation="{ns}.xsd"/>'
+            for ns in imports
+        )
+        data = (
+            '<?xml version="1.0" encoding="utf-8"?>\n'
+            f'<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="{target_namespace}">\n'
+            f"{imports_xml}\n"
+            "</xs:schema>\n"
+        )
+        (self.root_dir / filename).write_text(data, encoding="utf-8")
+
+    def _create_mock_xbrl_model(self, *, fact_namespaces: list[str]) -> Mock:
+        """Create a mock XBRL model with given fact namespaces."""
         xbrl_model = Mock()
-
-        # Mock model document with schema references
-        model_doc = Mock()
-        xbrl_model.modelDocument = model_doc
-
-        # Mock referencesDocument for schema refs (use only this to avoid duplicates)
-        model_doc.referencesDocument = {}
-        for i, ref in enumerate(schema_refs):
-            ref_doc = Mock()
-            ref_doc.schemaLocation = ref['href']
-            ref_doc.targetNamespace = ref['namespace']
-            model_doc.referencesDocument[f'ref_{i}'] = ref_doc
-
-        # Mock empty schemaLocationElements to avoid duplicates
-        model_doc.schemaLocationElements = {}
 
         # Mock facts with namespaces
         facts = []

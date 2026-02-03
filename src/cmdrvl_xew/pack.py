@@ -3,8 +3,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import mimetypes
+import os
 import re
 import shutil
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
@@ -225,6 +227,102 @@ def _validate_date_format(date_str: str, field_name: str) -> str:
     return date_cleaned
 
 
+def _default_arelle_xdg_config_home() -> Path:
+    configured = os.environ.get("XEW_ARELLE_XDG_CONFIG_HOME")
+    if configured:
+        return Path(configured)
+    return Path(tempfile.gettempdir()) / "cmdrvl-xew-arelle"
+
+
+def _load_xbrl_model_with_arelle(
+    primary_path: Path,
+    *,
+    resolution_mode: str,
+    require_arelle: bool,
+    disable_arelle: bool,
+    arelle_xdg_config_home: str | None = None,
+) -> object | None:
+    """Load the XBRL model using Arelle (if available).
+
+    Returns a model object (Arelle modelXbrl) or None if Arelle is unavailable or disabled.
+    """
+    if disable_arelle:
+        return None
+
+    try:
+        from arelle import Cntlr  # type: ignore
+    except Exception as e:
+        if require_arelle:
+            exit_invocation_error(
+                f"Arelle is required but could not be imported ({e}). Install the 'arelle-release' package."
+            )
+        return None
+
+    # Arelle uses XDG_CONFIG_HOME (even on macOS) when set; default macOS location
+    # is not writable in the sandbox. Force Arelle to use a writable config dir.
+    xdg_home = Path(arelle_xdg_config_home) if arelle_xdg_config_home else _default_arelle_xdg_config_home()
+    xdg_home.mkdir(parents=True, exist_ok=True)
+
+    previous_xdg = os.environ.get("XDG_CONFIG_HOME")
+    os.environ["XDG_CONFIG_HOME"] = str(xdg_home)
+
+    try:
+        from .sec_policy import SECRequestConfig
+
+        controller = Cntlr.Cntlr(logFileName="logToBuffer")
+        controller.webCache.httpUserAgent = SECRequestConfig(application_version=__version__).get_user_agent()
+
+        # In command-line mode, Arelle does not load taxonomyPackages.json by default.
+        # Force loading so offline resolution can use registered taxonomy packages.
+        try:
+            from arelle import PackageManager  # type: ignore
+            PackageManager.init(controller, loadPackagesConfig=True)
+            PackageManager.rebuildRemappings(controller)
+        except Exception:
+            # If taxonomy package loading fails, continue; Arelle will fall back
+            # to its web cache / direct URL resolution depending on offline mode.
+            pass
+
+        mode = (resolution_mode or "offline_preferred").strip().lower()
+
+        def _load(work_offline: bool) -> object:
+            controller.webCache.workOffline = work_offline
+            model = controller.modelManager.load(str(primary_path))
+            if model is None:
+                raise RuntimeError("Arelle returned no model (load returned None)")
+            return model
+
+        if mode == "offline_only":
+            return _load(True)
+
+        if mode == "offline_preferred":
+            try:
+                return _load(True)
+            except Exception:
+                return _load(False)
+
+        if mode in {"online_only", "hybrid"}:
+            return _load(False)
+
+        # Unknown resolution mode: default to offline_preferred behavior.
+        try:
+            return _load(True)
+        except Exception:
+            return _load(False)
+
+    except Exception as e:
+        if require_arelle:
+            exit_processing_error(f"Arelle failed to load XBRL model: {e}")
+        import logging
+        logging.warning(f"Failed to load XBRL model via Arelle: {e}; using mock model")
+        return None
+    finally:
+        if previous_xdg is None:
+            os.environ.pop("XDG_CONFIG_HOME", None)
+        else:
+            os.environ["XDG_CONFIG_HOME"] = previous_xdg
+
+
 def _run_xew_detection(primary_path: Path, artifacts_dir: Path, context_metadata: dict) -> tuple[list, DetectorContext]:
     """
     Run XEW detection on the primary XBRL document.
@@ -257,6 +355,7 @@ def _run_xew_detection(primary_path: Path, artifacts_dir: Path, context_metadata
         "primary_document_url": context_metadata.get("primary_document_url", ""),
         "enable_all_patterns": True,
         "gate_enforcement": True,
+        "p001_conflict_mode": context_metadata.get("p001_conflict_mode") or "rounded",
     }
 
     # Include comparator selection data for marker detectors
@@ -275,26 +374,27 @@ def _run_xew_detection(primary_path: Path, artifacts_dir: Path, context_metadata
     )
 
     try:
-        # Load XBRL model using Arelle (simplified placeholder)
-        # In production, this would use proper Arelle model loading
-        try:
-            # Mock XBRL model for testing - in production would use:
-            # from arelle import Cntlr, ModelManager
-            # controller = Cntlr.Cntlr()
-            # model = controller.modelManager.load(str(primary_path))
-            # detection_context.xbrl_model = model
-            detection_context.xbrl_model = _create_mock_xbrl_model(primary_path)
-        except Exception as e:
-            import logging
-            logging.warning(f"Failed to load XBRL model: {e}, using mock model")
-            detection_context.xbrl_model = _create_mock_xbrl_model(primary_path)
+        require_arelle = bool(context_metadata.get("require_arelle"))
+        disable_arelle = bool(context_metadata.get("disable_arelle"))
+        arelle_xdg_config_home = context_metadata.get("arelle_xdg_config_home")
+        resolution_mode = context_metadata.get("resolution_mode") or "offline_preferred"
 
-        # Run all registered detectors with enhanced logging + priority suppression
+        model = _load_xbrl_model_with_arelle(
+            primary_path,
+            resolution_mode=resolution_mode,
+            require_arelle=require_arelle,
+            disable_arelle=disable_arelle,
+            arelle_xdg_config_home=arelle_xdg_config_home,
+        )
+        detection_context.xbrl_model = model or _create_mock_xbrl_model(primary_path)
+
+        # Run all registered detectors with enhanced logging.
         import logging
         logger = logging.getLogger(__name__)
         logger.info(f"Running {len(registry.list_patterns())} detectors with Gate enforcement enabled")
 
-        findings, selected_finding = registry.run_detectors_with_priority_selection(detection_context)
+        findings = registry.run_detectors(detection_context)
+        selected_finding = registry.select_highest_priority_finding(findings)
 
         logger.info(f"XEW detection completed: {len(findings)} findings from {len(registry.list_patterns())} detectors")
 
@@ -544,6 +644,7 @@ def _run_p001_for_marker(
         config={
             "enable_all_patterns": False,
             "gate_enforcement": True,
+            "p001_conflict_mode": "rounded",
         },
     )
 
@@ -804,7 +905,7 @@ def run_pack(args: argparse.Namespace) -> int:
     pack_structure = create_pack_directory_structure(out_dir, layout)
 
     retrieved_at = args.retrieved_at or utc_now_iso()
-    generated_at = utc_now_iso()
+    generated_at = retrieved_at
 
     # Normalize arguments (validation already done in _validate_pack_args)
     cik = _normalize_cik(args.cik)
@@ -1052,57 +1153,57 @@ def run_pack(args: argparse.Namespace) -> int:
 
     marker_thresholds = marker_thresholds_config()
 
-    # Prepare comprehensive config for reproducibility
-    reproducibility_config = {
+    # xew_findings.json requires a schema-constrained toolchain object. Keep its
+    # config minimal (only settings that affect tool behavior and output).
+    p001_conflict_mode = getattr(args, "p001_conflict_mode", None) or "rounded"
+    findings_toolchain_config = {
         "resolution_mode": args.resolution_mode,
-        "pack_id": args.pack_id,
-        "comparator_policy": {
-            "form": args.form,
-            "base_form": comparator_policy_result.base_form,
-            "comparator_required": comparator_policy_result.comparator_required,
-            "comparator_provided": comparator_provided,
-            "policy_notes": comparator_policy_result.notes,
-        },
-        "marker_thresholds": marker_thresholds,
-        "history_window": history_metadata,
-        "comparator_selection": {
-            "selected_comparator": selection_result.selected_comparator,
-            "history_window": selection_result.history_window,
-            "selection_metadata": selection_result.selection_metadata,
-        },
-        "non_redistributable_artifacts": [
-            {
-                "source_url": ref.source_url,
-                "retrieved_at": ref.retrieved_at,
-                "sha256": ref.sha256,
-                "content_type": ref.content_type,
-                "notes": ref.notes,
-            }
-            for ref in non_redistributable_refs
-        ],
+        "p001_conflict_mode": p001_conflict_mode,
     }
 
-    # Prepare minimal toolchain config (only settings that affect tool behavior)
-    toolchain_config = {
-        "resolution_mode": args.resolution_mode,
-        "marker_thresholds": marker_thresholds,
-        # Add other tool behavior settings here as needed
-    }
+    findings_toolchain_obj = toolchain_recorder.record_toolchain(findings_toolchain_config)
 
-    # Record complete toolchain metadata
-    toolchain_obj = toolchain_recorder.record_toolchain(toolchain_config)
-
-    toolchain_config_obj = toolchain_obj.get("config")
-    if isinstance(toolchain_config_obj, dict):
-        toolchain_config_obj["recorded_at"] = retrieved_at
+    findings_toolchain_config_obj = findings_toolchain_obj.get("config")
+    if isinstance(findings_toolchain_config_obj, dict):
+        findings_toolchain_config_obj["recorded_at"] = retrieved_at
 
     # Override Arelle version if provided via CLI
     if args.arelle_version:
-        toolchain_obj["arelle_version"] = args.arelle_version
+        findings_toolchain_obj["arelle_version"] = args.arelle_version
 
-    # Write comprehensive reproducibility config to toolchain.json
-    # (includes full pack generation metadata for reproducibility)
-    write_json(out_dir / toolchain_path_rel, reproducibility_config)
+    # Evidence Pack toolchain file can include additional reproducibility metadata
+    # that is too large/noisy for xew_findings.json.
+    toolchain_file_obj = dict(findings_toolchain_obj)
+    if isinstance(findings_toolchain_config_obj, dict):
+        toolchain_file_obj["config"] = dict(findings_toolchain_config_obj)
+
+    toolchain_file_obj["marker_thresholds"] = marker_thresholds
+    toolchain_file_obj["history_window"] = history_metadata
+    toolchain_file_obj["comparator_policy"] = {
+        "form": args.form,
+        "base_form": comparator_policy_result.base_form,
+        "comparator_required": comparator_policy_result.comparator_required,
+        "comparator_provided": comparator_provided,
+        "policy_notes": comparator_policy_result.notes,
+    }
+    toolchain_file_obj["comparator_selection"] = {
+        "selected_comparator": selection_result.selected_comparator,
+        "history_window": selection_result.history_window,
+        "selection_metadata": selection_result.selection_metadata,
+    }
+    toolchain_file_obj["non_redistributable_artifacts"] = [
+        {
+            "source_url": ref.source_url,
+            "retrieved_at": ref.retrieved_at,
+            "sha256": ref.sha256,
+            "content_type": ref.content_type,
+            "notes": ref.notes,
+        }
+        for ref in non_redistributable_refs
+    ]
+
+    # Write toolchain metadata to toolchain.json (contract-required file)
+    write_json(out_dir / toolchain_path_rel, toolchain_file_obj)
 
     # === Extract Issuer/Filing Metadata from iXBRL ===
 
@@ -1235,6 +1336,11 @@ def run_pack(args: argparse.Namespace) -> int:
                 "form": form,
                 "filed_date": filed_date,
                 "primary_document_url": args.primary_document_url,
+                "resolution_mode": getattr(args, "resolution_mode", "offline_preferred"),
+                "p001_conflict_mode": p001_conflict_mode,
+                "require_arelle": bool(getattr(args, "require_arelle", False)),
+                "disable_arelle": bool(getattr(args, "no_arelle", False)),
+                "arelle_xdg_config_home": getattr(args, "arelle_xdg_config_home", None),
                 "comparator_selection": {
                     "selected_comparator": selection_result.selected_comparator,
                     "history_window": selection_result.history_window,
@@ -1277,7 +1383,7 @@ def run_pack(args: argparse.Namespace) -> int:
         findings=xbrl_findings,
         context=detection_context,
         artifacts=findings_artifacts,
-        toolchain=toolchain_obj,
+        toolchain=findings_toolchain_obj,
         input_metadata=input_obj,
         ext_metadata=ext_metadata,
         markers=markers or None,
@@ -1344,6 +1450,15 @@ def run_pack(args: argparse.Namespace) -> int:
     # Rebuild manifest with repro steps included
     manifest_data = manifest_builder.build_manifest()
     write_json(out_dir / "pack_manifest.json", manifest_data)
+
+    # Best-effort cleanup for Arelle model resources
+    try:
+        model = getattr(detection_context, "xbrl_model", None)
+        close_model = getattr(model, "close", None)
+        if callable(close_model):
+            close_model()
+    except Exception:
+        pass
 
     return ExitCode.SUCCESS
 
@@ -1462,10 +1577,15 @@ def _validate_comparator_policy(form: str, comparator_provided: bool) -> Compara
         exit_invocation_error(f"Unsupported form type: {e}")
 
     if policy.comparator_required and not comparator_provided:
-        exit_invocation_error(
-            f"Form {form} requires a comparator filing per policy: {policy.notes}. "
-            f"Provide --comparator-accession, --comparator-primary-document-url, "
-            f"and --comparator-primary-artifact-path."
+        import logging
+
+        logging.warning(
+            "Form %s typically compares to a prior filing (%s). No comparator provided; "
+            "comparator-based markers may be skipped. To include a comparator, pass "
+            "--comparator-accession, --comparator-primary-document-url, and "
+            "--comparator-primary-artifact-path.",
+            form,
+            policy.notes,
         )
 
     if not policy.comparator_required and comparator_provided:

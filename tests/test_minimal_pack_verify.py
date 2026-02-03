@@ -87,13 +87,6 @@ class TestMinimalPackVerify(unittest.TestCase):
                     "sha256": primary_hash,
                     "bytes": primary_artifact.stat().st_size,
                     "content_type": "text/html"
-                },
-                {
-                    "path": "toolchain/toolchain.json",
-                    "role": "toolchain",
-                    "sha256": toolchain_hash,
-                    "bytes": (toolchain_dir / "toolchain.json").stat().st_size,
-                    "content_type": "application/json"
                 }
             ],
             "findings": []

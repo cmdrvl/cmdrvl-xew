@@ -441,12 +441,24 @@ def get_unit_measures_clark(unit_element: Any) -> list[str]:
 
     # Handle different unit element types/interfaces
     if hasattr(unit_element, 'measures'):
-        # Arelle unit object
-        for measure in unit_element.measures:
+        unit_measures = unit_element.measures
+        if (
+            isinstance(unit_measures, tuple)
+            and len(unit_measures) == 2
+            and isinstance(unit_measures[0], (tuple, list))
+            and isinstance(unit_measures[1], (tuple, list))
+        ):
+            numerator_measures, denominator_measures = unit_measures
+            if denominator_measures:
+                raise TypeError("ratio units with denominator measures are not supported yet")
+            iterable = numerator_measures
+        else:
+            iterable = unit_measures
+
+        for measure in iterable:
             if hasattr(measure, 'qname'):
                 measures.append(qname_to_clark(measure.qname))
             else:
-                # Assume it's already a QName we can convert
                 measures.append(qname_to_clark(measure))
     elif hasattr(unit_element, 'measure'):
         # Single measure case

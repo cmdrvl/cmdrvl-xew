@@ -135,13 +135,47 @@ cmdrvl-xew pack \
 Notes:
 - The output directory must not exist (or must be empty).
 - `pack` copies the primary HTML to `artifacts/primary.html` and includes local schema/linkbase artifacts referenced by the primary document (and its schema). External taxonomy references are skipped (not bundled).
-- Findings are populated when detectors run successfully; if the XBRL model cannot be loaded, the pack will emit empty findings with warnings.
+- For periodic forms (10-Q/10-K/20-F), providing a comparator enables comparator-based markers; running without one is allowed but those markers may be skipped.
+- Findings are populated when detectors run successfully; if the XBRL model cannot be loaded, the pack will emit empty findings with warnings (use `--require-arelle` to fail fast instead).
+- `--p001-conflict-mode` controls how XEW-P001 flags numeric value conflicts: `rounded` (default) tolerates rounding-consistent duplicates; `strict` flags any mismatch.
 
 Pack flags:
 - Required: `--pack-id`, `--out`, `--primary`, `--cik`, `--accession`, `--form`, `--filed-date`, `--primary-document-url`
-- Optional: `--issuer-name`, `--period-end`, `--retrieved-at`, `--arelle-version`, `--resolution-mode`, `--derive-artifact-urls`
+- Optional: `--issuer-name`, `--period-end`, `--retrieved-at`, `--arelle-version`, `--resolution-mode`, `--p001-conflict-mode`, `--require-arelle`, `--no-arelle`, `--arelle-xdg-config-home`, `--derive-artifact-urls`
 - History window (repeatable, all-or-nothing): `--history-accession`, `--history-primary-document-url`, `--history-primary-artifact-path`
 - Comparator (optional, all-or-nothing): `--comparator-accession`, `--comparator-primary-document-url`, `--comparator-primary-artifact-path`
+
+### Install taxonomy packages for offline production runs
+
+For deterministic production use, run Arelle in `offline_only` mode with a pinned set of local taxonomy packages (e.g., US-GAAP, DEI, SRT, SEC enumerations).
+
+This command registers local taxonomy packages into an Arelle config home by writing:
+`<XDG_CONFIG_HOME>/arelle/taxonomyPackages.json`
+
+```bash
+cmdrvl-xew arelle install-packages \
+  --arelle-xdg-config-home ~/.cmdrvl-xew/arelle \
+  --package /path/to/us-gaap-2025.zip \
+  --package /path/to/dei-2025.zip
+
+# Or download + install in one step:
+cmdrvl-xew arelle install-packages \
+  --arelle-xdg-config-home ~/.cmdrvl-xew/arelle \
+  --download-dir ~/.cmdrvl-xew/taxonomy-packages \
+  --url https://xbrl.fasb.org/us-gaap/2025/us-gaap-2025.zip \
+  --url https://xbrl.fasb.org/srt/2025/srt-2025.zip
+
+# Then run pack using the same config home, offline-only:
+cmdrvl-xew pack ... \
+  --resolution-mode offline_only \
+  --arelle-xdg-config-home ~/.cmdrvl-xew/arelle
+```
+
+Notes:
+- You can install from local `--package` files, or use `--url` to download packages before installing.
+- Downloaded packages default to `<XDG_CONFIG_HOME>/arelle/taxonomy-packages` (override with `--download-dir`).
+- Always comply with publisher licenses/terms.
+- Using a persistent `--arelle-xdg-config-home` avoids relying on live network fetch during `pack`.
 
 ### Verify a Pack
 
@@ -170,7 +204,7 @@ scripts/fetch_samples.sh --profile edgar-readonly --bucket edgar-data-full --out
 ```
 
 Included accessions:
-- 10-K: `0001140361-25-010025`
+- 10-K: `0000020639-25-010025`
 - 10-Q: `0000034903-25-000063`
 - 8-K: `0000036104-25-000066`
 
@@ -196,7 +230,7 @@ Hosted systems (outside this repo) can provide:
 
 Current status:
 - Evidence Pack writer and verifier are implemented.
-- v1 detectors (P001/P002/P004/P005) are implemented; Arelle model loading and detector inputs continue to be refined (the pack currently falls back to a mock model, so findings may be empty without real model loading).
+- v1 detectors (P001/P002/P004/P005) are implemented; `pack` loads a real Arelle model by default (install `arelle-release`). Use `--no-arelle` to force the mock model, or `--require-arelle` to fail fast if Arelle cannot be used.
 
 Next steps (v1):
 - Harden Arelle loading and detector inputs for broader filing coverage.

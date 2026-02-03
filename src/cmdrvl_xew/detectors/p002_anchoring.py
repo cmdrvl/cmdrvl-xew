@@ -78,8 +78,11 @@ class AnchoringDefectsDetector(BaseDetector):
 
             # Create finding for anchoring defects
             finding = self._create_finding(defects, context)
-            self.logger.info(f"Created finding with {len(finding.instances)} instances")
+            if not finding:
+                self.logger.info("No schema-compliant anchoring defect instances detected")
+                return []
 
+            self.logger.info(f"Created finding with {len(finding.instances)} instances")
             return [finding]
 
         except Exception as e:
@@ -259,7 +262,7 @@ class AnchoringDefectsDetector(BaseDetector):
 
         return defects
 
-    def _create_finding(self, defects: List[Dict[str, Any]], context: DetectorContext) -> DetectorFinding:
+    def _create_finding(self, defects: List[Dict[str, Any]], context: DetectorContext) -> Optional[DetectorFinding]:
         """Create a finding from anchoring defects."""
 
         # Generate finding ID
@@ -271,6 +274,9 @@ class AnchoringDefectsDetector(BaseDetector):
             instance = self._create_instance(defect, context)
             if instance:
                 instances.append(instance)
+
+        if not instances:
+            return None
 
         # Apply deterministic ordering and truncation
         finding_summary = create_finding_summary(

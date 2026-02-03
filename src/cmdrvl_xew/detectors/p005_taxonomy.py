@@ -5,11 +5,17 @@ Detects inconsistent taxonomy references within iXBRL filings.
 Focuses on mismatches between schema references and actual namespace usage in facts.
 """
 
+from __future__ import annotations
+
 from typing import Dict, List, Any, Set, Optional
 import logging
 import re
+import xml.etree.ElementTree as ET
+from pathlib import Path
+from urllib.parse import urlparse, unquote
 
 from ._base import BaseDetector, DetectorContext, DetectorFinding, DetectorInstance
+from ..artifacts import extract_schema_refs
 from ..util import (
     canonical_signature_p005,
     generate_finding_id,
@@ -21,6 +27,11 @@ logger = logging.getLogger(__name__)
 
 
 _VERSION_RE = re.compile(r"/(\d{4}-\d{2}-\d{2})$")
+
+_XML_SCHEMA_NS = "http://www.w3.org/2001/XMLSchema"
+_XSD_IMPORT_TAG = f"{{{_XML_SCHEMA_NS}}}import"
+_XSD_INCLUDE_TAG = f"{{{_XML_SCHEMA_NS}}}include"
+_XSD_REDEFINE_TAG = f"{{{_XML_SCHEMA_NS}}}redefine"
 
 
 class TaxonomyInconsistencyDetector(BaseDetector):
@@ -51,9 +62,14 @@ class TaxonomyInconsistencyDetector(BaseDetector):
         self.logger.info("Running XEW-P005 taxonomy inconsistency detection")
 
         try:
-            schema_refs = self._extract_schema_references(context.xbrl_model)
+            schema_ref_hrefs = self._extract_schema_ref_hrefs(context)
             fact_namespaces = self._extract_fact_namespaces(context.xbrl_model)
-            inconsistencies = self._analyze_taxonomy_inconsistencies(schema_refs, fact_namespaces)
+            declared_namespaces = self._extract_declared_namespaces(schema_ref_hrefs, context)
+            inconsistencies = self._analyze_taxonomy_inconsistencies(
+                schema_ref_hrefs=schema_ref_hrefs,
+                declared_namespaces=declared_namespaces,
+                fact_namespaces=fact_namespaces,
+            )
             self.logger.debug(f"Detected {len(inconsistencies)} taxonomy inconsistencies")
 
             if not inconsistencies:
@@ -61,7 +77,7 @@ class TaxonomyInconsistencyDetector(BaseDetector):
                 return []
 
             # Create finding for inconsistencies
-            finding = self._create_finding(inconsistencies, schema_refs, fact_namespaces, context)
+            finding = self._create_finding(inconsistencies, context)
             self.logger.info(f"Created finding with {len(finding.instances)} instances")
 
             return [finding]
@@ -70,49 +86,140 @@ class TaxonomyInconsistencyDetector(BaseDetector):
             self.logger.error(f"Error during P005 detection: {e}")
             raise
 
-    def _extract_schema_references(self, xbrl_model) -> List[Dict[str, Any]]:
-        """Extract schema references from XBRL model."""
-        schema_refs = []
+    def _extract_schema_ref_hrefs(self, context: DetectorContext) -> list[str]:
+        """Extract link:schemaRef href values from the primary iXBRL document.
 
+        Important: for reproducibility, we prefer the filing-authored href strings
+        (typically relative filenames like "foo-20250101.xsd") over Arelle-resolved
+        absolute paths (e.g., /tmp/.../foo-20250101.xsd).
+        """
+        primary_path = Path(context.primary_document_path)
+        hrefs: list[str] = []
         try:
-            # In Arelle, schema references are typically in the modelDocument
-            if not hasattr(xbrl_model, 'modelDocument') or not xbrl_model.modelDocument:
-                self.logger.warning("No model document available for schema reference extraction")
-                return schema_refs
-
-            # Extract from referencesDocument or schemaLocation
-            if hasattr(xbrl_model.modelDocument, 'referencesDocument'):
-                for ref_doc in xbrl_model.modelDocument.referencesDocument.values():
-                    if hasattr(ref_doc, 'schemaLocation'):
-                        href = ref_doc.schemaLocation
-                        # Extract namespace from href or ref_doc properties
-                        namespace = getattr(ref_doc, 'targetNamespace', None)
-
-                        schema_ref_data = {
-                            'href': href,
-                            'namespace': namespace,
-                            'document': ref_doc
-                        }
-                        schema_refs.append(schema_ref_data)
-
-            # Also check direct schema references in the instance document
-            if hasattr(xbrl_model.modelDocument, 'schemaLocationElements'):
-                for schema_loc in xbrl_model.modelDocument.schemaLocationElements.values():
-                    namespace_uri = getattr(schema_loc, 'namespaceURI', None)
-                    location_uri = getattr(schema_loc, 'schemaLocation', None)
-
-                    if namespace_uri and location_uri:
-                        schema_ref_data = {
-                            'href': location_uri,
-                            'namespace': namespace_uri,
-                            'element': schema_loc
-                        }
-                        schema_refs.append(schema_ref_data)
-
+            hrefs = extract_schema_refs(primary_path)
         except Exception as e:
-            self.logger.warning(f"Failed to extract schema references: {e}")
+            self.logger.warning(f"Failed to extract schemaRef hrefs from primary document: {e}")
 
-        return schema_refs
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for href in hrefs:
+            value = str(href or "").strip()
+            if not value or value in seen:
+                continue
+            seen.add(value)
+            normalized.append(value)
+        if normalized:
+            return sorted(normalized)
+
+        # Fallback: use Arelle modelDocument referencesDocument (keys are referenced docs).
+        xbrl_model = getattr(context, "xbrl_model", None)
+        model_doc = getattr(xbrl_model, "modelDocument", None) if xbrl_model is not None else None
+        refs = getattr(model_doc, "referencesDocument", None) if model_doc is not None else None
+        if isinstance(refs, dict):
+            fallback: list[str] = []
+            for ref_doc in refs.keys():
+                uri = getattr(ref_doc, "uri", None) or getattr(ref_doc, "filepath", None)
+                if not uri:
+                    continue
+                fallback.append(Path(str(uri)).name)
+            fallback = sorted({h for h in fallback if h})
+            if fallback:
+                self.logger.warning("Falling back to Arelle referencesDocument for schema refs (may be less stable)")
+                return fallback
+
+        self.logger.warning("No schemaRef hrefs found; skipping schemaRef-based checks")
+        return []
+
+    def _extract_declared_namespaces(self, schema_ref_hrefs: list[str], context: DetectorContext) -> set[str]:
+        """Extract declared namespaces from referenced extension schema(s).
+
+        This method is deliberately artifact-driven (parsing local .xsd files)
+        so it does not depend on network resolution of imported taxonomies.
+        """
+        if not schema_ref_hrefs:
+            return set()
+
+        artifacts_root = Path(context.artifacts_dir)
+        base_dir = Path(context.primary_document_path).parent
+        declared: set[str] = set()
+
+        for href in schema_ref_hrefs:
+            resolved = self._resolve_local_href(href, base_dir=base_dir, root_dir=artifacts_root)
+            if resolved is None:
+                continue
+            if not resolved.is_file():
+                self.logger.warning(f"schemaRef href resolves to missing local file: {href} -> {resolved}")
+                continue
+            declared |= self._extract_xsd_declared_namespaces(resolved, root_dir=artifacts_root)
+
+        return declared
+
+    def _resolve_local_href(self, href: str, *, base_dir: Path, root_dir: Path) -> Path | None:
+        href = (href or "").strip()
+        if not href:
+            return None
+        parsed = urlparse(href)
+        if parsed.scheme or parsed.netloc:
+            return None
+        if not parsed.path:
+            return None
+        rel_path = Path(unquote(parsed.path))
+        if rel_path.is_absolute():
+            return None
+        resolved = (base_dir / rel_path).resolve()
+        try:
+            resolved.relative_to(root_dir.resolve())
+        except ValueError:
+            # Don't allow resolving paths outside the artifact root.
+            return None
+        return resolved
+
+    def _extract_xsd_declared_namespaces(self, schema_path: Path, *, root_dir: Path, max_files: int = 50) -> set[str]:
+        """Return namespaces declared by an extension schema via targetNamespace + xs:import.
+
+        Includes namespaces from xs:include / xs:redefine'd schemas when those
+        schemaLocations resolve to local files under root_dir.
+        """
+        declared: set[str] = set()
+        seen: set[Path] = set()
+        stack: list[Path] = [schema_path]
+
+        while stack:
+            current = stack.pop()
+            if current in seen:
+                continue
+            if len(seen) >= max_files:
+                self.logger.warning(f"Reached max XSD include depth while parsing {schema_path.name}")
+                break
+            seen.add(current)
+
+            try:
+                tree = ET.parse(current)
+            except Exception as e:
+                self.logger.warning(f"Failed to parse XSD {current.name}: {e}")
+                continue
+
+            root = tree.getroot()
+            target_namespace = root.get("targetNamespace")
+            if target_namespace:
+                declared.add(target_namespace.strip())
+
+            for imp in root.iter(_XSD_IMPORT_TAG):
+                ns = imp.get("namespace")
+                if ns:
+                    declared.add(ns.strip())
+
+            for include_tag in (_XSD_INCLUDE_TAG, _XSD_REDEFINE_TAG):
+                for inc in root.iter(include_tag):
+                    loc = inc.get("schemaLocation")
+                    if not loc:
+                        continue
+                    resolved = self._resolve_local_href(loc, base_dir=current.parent, root_dir=root_dir)
+                    if resolved is None or not resolved.is_file():
+                        continue
+                    stack.append(resolved)
+
+        return declared
 
     def _extract_fact_namespaces(self, xbrl_model) -> Set[str]:
         """Extract unique namespaces used in facts."""
@@ -132,29 +239,29 @@ class TaxonomyInconsistencyDetector(BaseDetector):
 
     def _analyze_taxonomy_inconsistencies(
         self,
-        schema_refs: List[Dict[str, Any]],
-        fact_namespaces: Set[str]
+        *,
+        schema_ref_hrefs: list[str],
+        declared_namespaces: set[str],
+        fact_namespaces: Set[str],
     ) -> List[Dict[str, Any]]:
         """Analyze schema references vs fact namespaces for inconsistencies."""
         inconsistencies: List[Dict[str, Any]] = []
 
-        schema_ref_hrefs = sorted({ref.get('href') for ref in schema_refs if ref.get('href')})
-        declared_namespaces = sorted({ref.get('namespace') for ref in schema_refs if ref.get('namespace')})
+        schema_ref_hrefs_sorted = sorted({ref for ref in schema_ref_hrefs if ref})
         fact_namespaces_sorted = sorted(fact_namespaces)
 
-        missing = sorted(set(fact_namespaces_sorted) - set(declared_namespaces))
-        unused = sorted(set(declared_namespaces) - set(fact_namespaces_sorted))
-        if missing or unused:
+        declared_namespaces_sorted = sorted({ns for ns in declared_namespaces if ns})
+        missing: list[str] = []
+        if declared_namespaces_sorted:
+            missing = sorted(set(fact_namespaces_sorted) - set(declared_namespaces_sorted))
+        if missing:
             details_parts = []
-            if missing:
-                details_parts.append(f"namespaces_in_facts_not_in_schema_refs={missing}")
-            if unused:
-                details_parts.append(f"schema_ref_namespaces_not_in_facts={unused}")
+            details_parts.append(f"namespaces_in_facts_not_declared_in_schema_imports={missing}")
             inconsistencies.append(
                 {
                     "issue_code": "namespace_schema_ref_mismatch",
                     "details": "; ".join(details_parts),
-                    "schema_refs": schema_ref_hrefs,
+                    "schema_refs": schema_ref_hrefs_sorted,
                     "namespaces_in_facts": fact_namespaces_sorted,
                 }
             )
@@ -169,7 +276,7 @@ class TaxonomyInconsistencyDetector(BaseDetector):
                 {
                     "issue_code": "mixed_taxonomy_versions",
                     "details": details,
-                    "schema_refs": schema_ref_hrefs,
+                    "schema_refs": schema_ref_hrefs_sorted,
                     "namespaces_in_facts": fact_namespaces_sorted,
                 }
             )
@@ -187,10 +294,11 @@ class TaxonomyInconsistencyDetector(BaseDetector):
             versions_by_base.setdefault(base, set()).add(version)
         return {base: versions for base, versions in versions_by_base.items() if len(versions) > 1}
 
-    def _create_finding(self, inconsistencies: List[Dict[str, Any]],
-                       schema_refs: List[Dict[str, Any]],
-                       fact_namespaces: Set[str],
-                       context: DetectorContext) -> DetectorFinding:
+    def _create_finding(
+        self,
+        inconsistencies: List[Dict[str, Any]],
+        context: DetectorContext,
+    ) -> DetectorFinding:
         """Create a finding from taxonomy inconsistencies."""
 
         # Generate finding ID
@@ -199,7 +307,7 @@ class TaxonomyInconsistencyDetector(BaseDetector):
         # Create instances for each inconsistency type
         instances = []
         for inconsistency in inconsistencies:
-            instance = self._create_instance(inconsistency, schema_refs, fact_namespaces, context)
+            instance = self._create_instance(inconsistency, context)
             if instance:
                 instances.append(instance)
 
@@ -231,8 +339,6 @@ class TaxonomyInconsistencyDetector(BaseDetector):
     def _create_instance(
         self,
         inconsistency: Dict[str, Any],
-        schema_refs: List[Dict[str, Any]],
-        fact_namespaces: Set[str],
         context: DetectorContext
     ) -> Optional[DetectorInstance]:
         """Create a detector instance from a taxonomy inconsistency."""

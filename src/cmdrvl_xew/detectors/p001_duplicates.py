@@ -5,8 +5,11 @@ Detects facts that share the same concept, context signature, and unit but may h
 conflicting values. This represents objective structural errors in XBRL filings.
 """
 
+from __future__ import annotations
+
 from typing import Dict, List, Any, Set, Tuple, Optional
 from collections import defaultdict
+from decimal import Decimal
 import logging
 
 from ._base import BaseDetector, DetectorContext, DetectorFinding, DetectorInstance
@@ -28,6 +31,29 @@ from ..util import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _attr_bool(value: object) -> bool:
+    if value is None:
+        return False
+    if callable(value):
+        try:
+            return bool(value())
+        except TypeError:
+            return bool(value)
+    return bool(value)
+
+
+def _date_iso(value: object) -> str:
+    if value is None:
+        return ""
+    date_value = getattr(value, "date", None)
+    if callable(date_value):
+        value = date_value()
+    isoformat = getattr(value, "isoformat", None)
+    if callable(isoformat):
+        return str(isoformat())
+    return str(value)
 
 
 class DuplicateFactsDetector(BaseDetector):
@@ -92,13 +118,15 @@ class DuplicateFactsDetector(BaseDetector):
         # Note: This is a simplified extraction - production would use full Arelle API
         for fact in getattr(xbrl_model, 'facts', []):
             try:
+                unit = getattr(fact, 'unit', None)
+                is_numeric = _attr_bool(getattr(fact, 'isNumeric', None)) or unit is not None
                 fact_data = {
                     'concept': fact.concept,
                     'qname': fact.qname,
                     'value': fact.value,
                     'context': fact.context,
-                    'unit': getattr(fact, 'unit', None),
-                    'is_numeric': getattr(fact, 'isNumeric', False),
+                    'unit': unit,
+                    'is_numeric': bool(is_numeric),
                     'arelle_fact': fact  # Keep reference for additional analysis
                 }
                 facts.append(fact_data)
@@ -132,19 +160,22 @@ class DuplicateFactsDetector(BaseDetector):
 
             # Extract context information
             fact_context = fact['context']
-            if not fact_context:
+            if fact_context is None:
                 return None
 
             # Entity information
             entity_scheme, entity_identifier = self._extract_entity_identifier(fact_context)
 
             # Period signature
-            if hasattr(fact_context, 'isInstantPeriod') and fact_context.isInstantPeriod:
-                period_sig = period_signature("instant", instant=str(fact_context.instantDate))
-            elif hasattr(fact_context, 'isStartEndPeriod') and fact_context.isStartEndPeriod:
+            if _attr_bool(getattr(fact_context, "isInstantPeriod", None)):
+                instant = getattr(fact_context, "instantDate", None) or getattr(fact_context, "instantDatetime", None)
+                period_sig = period_signature("instant", instant=_date_iso(instant))
+            elif _attr_bool(getattr(fact_context, "isStartEndPeriod", None)):
+                start = getattr(fact_context, "startDate", None) or getattr(fact_context, "startDatetime", None)
+                end = getattr(fact_context, "endDate", None) or getattr(fact_context, "endDatetime", None)
                 period_sig = period_signature("duration",
-                                            start=str(fact_context.startDate),
-                                            end=str(fact_context.endDate))
+                                            start=_date_iso(start),
+                                            end=_date_iso(end))
             else:
                 self.logger.warning(f"Unknown period type for fact context: {fact_context}")
                 return None
@@ -156,12 +187,20 @@ class DuplicateFactsDetector(BaseDetector):
                     dim_clark = qname_to_clark(dim_qname)
 
                     # Handle explicit vs typed dimensions
-                    if hasattr(member_obj, 'isExplicit') and member_obj.isExplicit:
-                        member_clark = qname_to_clark(member_obj.member)
-                        dimensions.append((dim_clark, member_clark))
-                    elif hasattr(member_obj, 'isTyped') and member_obj.isTyped:
+                    if _attr_bool(getattr(member_obj, "isExplicit", None)):
+                        member = getattr(member_obj, "member", None)
+                        member_qname = getattr(member, "qname", None) if member is not None else None
+                        if member_qname is None:
+                            member_qname = getattr(member_obj, "memberQname", None)
+                        if member_qname is None:
+                            continue
+                        dimensions.append((dim_clark, qname_to_clark(member_qname)))
+                    elif _attr_bool(getattr(member_obj, "isTyped", None)):
                         # Use typed dimension canonicalization
-                        typed_value = str(member_obj.typedMember)
+                        typed_member = getattr(member_obj, "typedMember", None)
+                        if typed_member is None:
+                            continue
+                        typed_value = str(typed_member)
                         member_canonical = canonicalize_typed_dimension_member(typed_value)
                         dimensions.append((dim_clark, member_canonical))
 
@@ -169,15 +208,16 @@ class DuplicateFactsDetector(BaseDetector):
 
             # Unit normalization
             unit = None
-            if fact['unit'] and fact['is_numeric']:
+            unit_obj = fact.get('unit')
+            if unit_obj is not None and fact.get('is_numeric'):
                 # Extract unit measures and normalize
                 try:
-                    unit_measures = get_unit_measures_clark(fact['unit'])
+                    unit_measures = get_unit_measures_clark(unit_obj)
                     unit = normalize_unit(measures=unit_measures)
                 except Exception as e:
                     self.logger.warning(f"Failed to normalize unit: {e}")
                     # Fallback to unit ID
-                    unit_id = getattr(fact['unit'], 'id', None)
+                    unit_id = getattr(unit_obj, 'id', None)
                     unit = normalize_unit(unit_ref=unit_id) if unit_id else None
 
             # Generate canonical signature
@@ -214,10 +254,124 @@ class DuplicateFactsDetector(BaseDetector):
         identifier = getattr(entity, 'value', None) or getattr(entity, 'identifier', None)
         return str(scheme or ""), str(identifier or "")
 
+    def _p001_conflict_mode(self, context: DetectorContext) -> str:
+        """Return P001 value conflict mode ('rounded' or 'strict')."""
+        config = getattr(context, "config", None)
+        if not isinstance(config, dict):
+            return "rounded"
+        raw = config.get("p001_conflict_mode")
+        if raw is None:
+            return "rounded"
+        mode = str(raw).strip().lower()
+        if mode == "strict":
+            return "strict"
+        return "rounded"
+
+    def _parse_xbrl_int_attr(self, value: object) -> int | None:
+        if value is None:
+            return None
+        if isinstance(value, int):
+            return value
+        if isinstance(value, bool):
+            return None
+        text = str(value).strip()
+        if not text:
+            return None
+        if text.upper() in {"INF", "INFINITY"}:
+            return None
+        try:
+            return int(text)
+        except ValueError:
+            return None
+
+    def _numeric_rounding_interval(
+        self,
+        value: Decimal,
+        *,
+        decimals: object | None,
+        precision: object | None,
+    ) -> tuple[Decimal, Decimal]:
+        decimals_int = self._parse_xbrl_int_attr(decimals)
+        if decimals_int is not None:
+            unit = Decimal(10) ** (-decimals_int)
+            tol = Decimal("0.5") * unit
+            return (value - tol, value + tol)
+
+        precision_int = self._parse_xbrl_int_attr(precision)
+        if precision_int is not None and precision_int > 0 and value != 0:
+            unit = Decimal(10) ** (abs(value).adjusted() - precision_int + 1)
+            tol = Decimal("0.5") * unit
+            return (value - tol, value + tol)
+
+        return (value, value)
+
+    def _rounded_conflicts(self, facts: List[Dict[str, Any]]) -> bool:
+        """Return True if values are inconsistent beyond XBRL rounding tolerance."""
+        items: list[tuple[Decimal | None, object | None, object | None]] = []
+        saw_non_nil = False
+        saw_nil = False
+
+        for fact in facts:
+            raw_value = str(fact["value"]) if fact.get("value") is not None else None
+            try:
+                normalized = normalize_fact_value(raw_value, is_numeric=bool(fact.get("is_numeric")))
+            except Exception:
+                # Fall back to strict mode for unparsable numeric values.
+                normalized = raw_value
+
+            if not isinstance(normalized, Decimal) and normalized is not None:
+                # Non-decimal (e.g., string) values are compared strictly.
+                return self._strict_conflicts(facts)
+
+            if normalized is None:
+                saw_nil = True
+            else:
+                saw_non_nil = True
+
+            arelle_fact = fact.get("arelle_fact")
+            decimals = getattr(arelle_fact, "decimals", None) if arelle_fact is not None else None
+            precision = getattr(arelle_fact, "precision", None) if arelle_fact is not None else None
+            items.append((normalized, decimals, precision))
+
+        # Nil vs non-nil is a conflict.
+        if saw_nil and saw_non_nil:
+            return True
+
+        # All nil => no value conflict.
+        if not saw_non_nil:
+            return False
+
+        intervals: list[tuple[Decimal, Decimal]] = []
+        for value, decimals, precision in items:
+            if value is None:
+                continue
+            intervals.append(self._numeric_rounding_interval(value, decimals=decimals, precision=precision))
+
+        if not intervals:
+            return False
+
+        lo = max(interval[0] for interval in intervals)
+        hi = min(interval[1] for interval in intervals)
+        return lo > hi
+
+    def _strict_conflicts(self, facts: List[Dict[str, Any]]) -> bool:
+        normalized_values = []
+        for fact in facts:
+            raw_value = str(fact['value']) if fact['value'] is not None else None
+            try:
+                normalized_values.append(normalize_fact_value(raw_value, is_numeric=fact['is_numeric']))
+            except Exception:
+                normalized_values.append(raw_value)
+
+        if len(normalized_values) < 2:
+            return False
+        base = normalized_values[0]
+        return any(values_conflicting(base, v) for v in normalized_values[1:])
+
     def _fact_ref_from_fact(self, fact: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Build a schema-compatible fact_ref from an Arelle fact."""
         fact_context = fact.get('context')
-        if not fact_context:
+        if fact_context is None:
             return None
         context_ref = getattr(fact_context, 'id', None) or getattr(fact_context, 'contextID', None)
         if not context_ref:
@@ -261,7 +415,7 @@ class DuplicateFactsDetector(BaseDetector):
         # Create instances for each duplicate group
         instances = []
         for signature_bytes, facts in duplicate_groups.items():
-            instance = self._create_instance(signature_bytes, facts)
+            instance = self._create_instance(signature_bytes, facts, context)
             if instance:
                 instances.append(instance)
 
@@ -290,7 +444,7 @@ class DuplicateFactsDetector(BaseDetector):
 
         return finding
 
-    def _create_instance(self, signature_bytes: bytes, facts: List[Dict[str, Any]]) -> Optional[DetectorInstance]:
+    def _create_instance(self, signature_bytes: bytes, facts: List[Dict[str, Any]], context: DetectorContext) -> Optional[DetectorInstance]:
         """Create a detector instance from a group of duplicate facts."""
         try:
             # Generate instance ID from signature
@@ -299,19 +453,11 @@ class DuplicateFactsDetector(BaseDetector):
             # Extract representative fact information
             first_fact = facts[0]
 
-            # Normalize fact values and detect conflicts
-            normalized_values = []
-            for fact in facts:
-                raw_value = str(fact['value']) if fact['value'] is not None else None
-                normalized_value = normalize_fact_value(raw_value, is_numeric=fact['is_numeric'])
-
-                normalized_values.append(normalized_value)
-
-            # Check for value conflicts
-            has_conflicts = False
-            if len(normalized_values) > 1:
-                base = normalized_values[0]
-                has_conflicts = any(values_conflicting(base, v) for v in normalized_values[1:])
+            conflict_mode = self._p001_conflict_mode(context)
+            if conflict_mode == "strict":
+                has_conflicts = self._strict_conflicts(facts)
+            else:
+                has_conflicts = self._rounded_conflicts(facts)
 
             # Build fact refs (schema-compatible)
             fact_refs = []

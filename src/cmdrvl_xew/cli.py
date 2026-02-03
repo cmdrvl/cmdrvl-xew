@@ -9,6 +9,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from .exit_codes import ExitCode
+from .arelle_setup import run_arelle_install_packages
 from .fetch import run_fetch
 from .flatten import run_flatten
 from .pack import run_pack
@@ -194,6 +195,10 @@ def validate_pack_args(args: argparse.Namespace) -> list[str]:
                 errors.append("--derive-artifact-urls should only be used with SEC EDGAR URLs")
         else:
             errors.append("--derive-artifact-urls requires --primary-document-url to be provided")
+
+    # Validate Arelle flags consistency
+    if getattr(args, "require_arelle", False) and getattr(args, "no_arelle", False):
+        errors.append("Cannot use both --require-arelle and --no-arelle")
 
 
     # Validate output directory constraints
@@ -381,9 +386,33 @@ def main(argv: list[str] | None = None) -> int:
     pack.add_argument("--arelle-version", help="Record the Arelle version used")
     pack.add_argument("--resolution-mode", default="offline_preferred")
     pack.add_argument(
+        "--require-arelle",
+        action="store_true",
+        help="Fail if Arelle cannot be used to load a real XBRL model (no mock fallback).",
+    )
+    pack.add_argument(
+        "--no-arelle",
+        action="store_true",
+        help="Disable Arelle model loading and run detectors against a mock model (debug/testing only).",
+    )
+    pack.add_argument(
+        "--arelle-xdg-config-home",
+        help="Override XDG_CONFIG_HOME for Arelle runtime files (defaults to a writable temp directory).",
+    )
+    pack.add_argument(
         "--derive-artifact-urls",
         action="store_true",
         help="Derive artifact source_url from primary document URL base (EDGAR-driven only)",
+    )
+    pack.add_argument(
+        "--p001-conflict-mode",
+        choices=["rounded", "strict"],
+        default="rounded",
+        help=(
+            "How XEW-P001 flags value_conflict for numeric duplicate fact sets. "
+            "'rounded' treats rounding-consistent values (per decimals/precision) as non-conflicts (default). "
+            "'strict' flags any numeric mismatch as a conflict."
+        ),
     )
 
     verify = sub.add_parser("verify-pack", help="Verify an Evidence Pack")
@@ -401,6 +430,50 @@ def main(argv: list[str] | None = None) -> int:
     fetch.add_argument("--user-agent", required=True, help="SEC-compliant User-Agent string")
     fetch.add_argument("--min-interval", type=float, default=0.2, help="Minimum seconds between requests (default: 0.2)")
     fetch.add_argument("--force", action="store_true", help="Overwrite existing files in output directory")
+
+    arelle = sub.add_parser("arelle", help="Manage Arelle config (taxonomy packages)")
+    arelle_sub = arelle.add_subparsers(dest="arelle_cmd", required=True)
+
+    arelle_install = arelle_sub.add_parser(
+        "install-packages",
+        help="Install/register local taxonomy packages for offline Arelle resolution",
+    )
+    arelle_install.add_argument(
+        "--arelle-xdg-config-home",
+        help=(
+            "Override XDG_CONFIG_HOME for Arelle (use a persistent writable path in production). "
+            "Defaults to $XEW_ARELLE_XDG_CONFIG_HOME or a temp directory."
+        ),
+    )
+    arelle_install.add_argument(
+        "--package",
+        action="append",
+        help="Path to a local taxonomy package (.zip) or package directory. Repeatable.",
+    )
+    arelle_install.add_argument(
+        "--url",
+        action="append",
+        help="Download a taxonomy package URL (typically .zip) before installing. Repeatable.",
+    )
+    arelle_install.add_argument(
+        "--download-dir",
+        help="Directory to store downloaded packages (default: <XDG_CONFIG_HOME>/arelle/taxonomy-packages).",
+    )
+    arelle_install.add_argument(
+        "--user-agent",
+        help="User-Agent string for downloads (default: SEC-compliant cmdrvl-xew UA).",
+    )
+    arelle_install.add_argument(
+        "--min-interval",
+        type=float,
+        default=0.2,
+        help="Minimum seconds between download requests (default: 0.2).",
+    )
+    arelle_install.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite existing downloaded files.",
+    )
 
     args = p.parse_args(argv)
 
@@ -425,6 +498,10 @@ def main(argv: list[str] | None = None) -> int:
         return run_verify_pack(args)
     if args.cmd == "fetch":
         return run_fetch(args)
+    if args.cmd == "arelle":
+        if args.arelle_cmd == "install-packages":
+            return run_arelle_install_packages(args)
+        p.error(f"unknown arelle command: {args.arelle_cmd}")
 
     p.error(f"unknown command: {args.cmd}")
     return ExitCode.CONFIG_ERROR

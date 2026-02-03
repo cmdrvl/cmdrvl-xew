@@ -25,6 +25,10 @@ Current engine behavior:
 - Local artifacts are collected from the flat input directory.
 - External taxonomy references (schemaRef/linkbaseRef URLs) are skipped during artifact collection.
 - A full taxonomy resolver exists in `src/cmdrvl_xew/taxonomy.py` but is not wired into pack execution yet.
+- Arelle taxonomy packages can be registered for offline runs using:
+  - `cmdrvl-xew arelle install-packages --arelle-xdg-config-home <DIR> --package <PATH> [--package ...] [--url <URL> ...]`
+  - This writes/updates `<DIR>/arelle/taxonomyPackages.json` (Arelle's taxonomy package registry).
+  - When using `--url`, packages are downloaded to `<XDG_CONFIG_HOME>/arelle/taxonomy-packages` by default (override via `--download-dir`).
 
 ## 2) Recording taxonomy inputs
 

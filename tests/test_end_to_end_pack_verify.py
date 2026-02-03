@@ -158,6 +158,55 @@ class TestEndToEndPackVerify(unittest.TestCase):
         except SystemExit as e:
             self.assertEqual(e.code, 0, f"Pack verification failed with exit code {e.code}")
 
+    def test_pack_allows_periodic_without_comparator(self):
+        """Periodic forms should be runnable with or without comparators."""
+
+        pack_dir = self.output_dir / "test_pack_10q_no_comparator"
+
+        pack_args = argparse.Namespace(
+            pack_id="test-10q-no-comparator",
+            out=str(pack_dir),
+            primary=str(self.primary_file),
+            issuer_name="Test Company Inc.",
+            cik="0001234567",
+            accession="0001234567-25-000002",
+            form="10-Q",
+            filed_date="2025-01-31",
+            period_end="2025-01-31",
+            primary_document_url="https://www.sec.gov/Archives/edgar/data/1234567/000123456725000002/test_filing.htm",
+            comparator_accession=None,
+            comparator_primary_document_url=None,
+            comparator_primary_artifact_path=None,
+            history_accession=None,
+            history_primary_document_url=None,
+            history_primary_artifact_path=None,
+            retrieved_at="2025-01-31T12:00:00Z",
+            arelle_version="1.2.3-test",
+            resolution_mode="offline_preferred",
+            derive_artifact_urls=False
+        )
+
+        try:
+            result = run_pack(pack_args)
+            self.assertEqual(result, 0, "Pack generation should succeed without comparator")
+        except SystemExit as e:
+            self.assertEqual(e.code, 0, f"Pack generation failed with exit code {e.code}")
+
+        verify_args = argparse.Namespace(
+            pack=str(pack_dir),
+            validate_schema=False,
+            quiet=True,
+            verbose=False,
+            check_only=False,
+            fail_fast=False
+        )
+
+        try:
+            verify_result = run_verify_pack(verify_args)
+            self.assertEqual(verify_result, 0, "Pack verification should succeed")
+        except SystemExit as e:
+            self.assertEqual(e.code, 0, f"Pack verification failed with exit code {e.code}")
+
     def test_pack_deterministic_output(self):
         """Test that pack generation produces deterministic output."""
 
