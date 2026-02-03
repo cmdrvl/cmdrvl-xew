@@ -33,6 +33,8 @@ def run_doctor(args: argparse.Namespace) -> int:
     _print_checks(checks, xdg_home=xdg_home, registry_path=registry_path)
 
     has_fail = any(c.status == "FAIL" for c in checks)
+    has_warn = any(c.status == "WARN" for c in checks)
+    _print_summary(has_warn=has_warn, has_fail=has_fail)
     return ExitCode.CONFIG_ERROR if has_fail else ExitCode.SUCCESS
 
 
@@ -189,3 +191,14 @@ def _print_checks(checks: list[DoctorCheck], *, xdg_home: Path, registry_path: P
         print(f"[{c.status}] {c.name}: {c.message}")
         if c.fix:
             print(f"      fix: {c.fix}")
+
+
+def _print_summary(*, has_warn: bool, has_fail: bool) -> None:
+    if has_fail:
+        summary = "FAIL (not configured)"
+    elif has_warn:
+        summary = "WARN (not fully configured)"
+    else:
+        summary = "OK"
+    print("")
+    print(f"Overall: {summary}")
