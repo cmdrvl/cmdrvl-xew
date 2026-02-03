@@ -157,7 +157,9 @@ pip install -e '.[jsonschema]'
 4. **PUSH TO REMOTE** - This is MANDATORY:
    ```bash
    git pull --rebase
-   bd sync
+   br sync --flush-only
+   git add .beads/
+   git commit -m "sync beads"
    git push
    git status  # MUST show "up to date with origin"
    ```
