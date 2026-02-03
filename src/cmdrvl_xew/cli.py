@@ -453,7 +453,11 @@ def main(argv: list[str] | None = None) -> int:
     arelle_install.add_argument(
         "--url",
         action="append",
-        help="Download a taxonomy package URL (typically .zip) before installing. Repeatable.",
+        help=(
+            "Download a taxonomy URL before installing. Repeatable. "
+            "Supports Arelle taxonomy package .zip URLs, and directory URLs (trailing /) that will be mirrored "
+            "by downloading all .xsd files and generating a local catalog.xml."
+        ),
     )
     arelle_install.add_argument(
         "--download-dir",

@@ -211,3 +211,6 @@ XEW-EP-*/
 
 # Local sample filings (do not commit real filings)
 sample/
+
+# macOS Finder
+.DS_Store

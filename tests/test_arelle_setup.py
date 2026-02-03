@@ -3,6 +3,7 @@ import os
 import tempfile
 import types
 import unittest
+import zipfile
 from contextlib import redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
@@ -149,9 +150,15 @@ class TestArelleSetup(unittest.TestCase):
                 def __exit__(self, _exc_type, _exc, _tb):
                     return False
 
+            # Minimal valid taxonomy package zip (just enough for detection).
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w") as zf:
+                zf.writestr("pkg/META-INF/taxonomyPackage.xml", "<tp:taxonomyPackage xmlns:tp='http://xbrl.org/2016/taxonomy-package'/>")
+            zip_bytes = buf.getvalue()
+
             out = io.StringIO()
             with patch.dict("sys.modules", {"arelle": fake_arelle}):
-                with patch("cmdrvl_xew.arelle_setup.urllib.request.urlopen", return_value=FakeResponse(b"zip-bytes")):
+                with patch("cmdrvl_xew.arelle_setup.urllib.request.urlopen", return_value=FakeResponse(zip_bytes)):
                     with patch.dict(os.environ, {"XDG_CONFIG_HOME": "prev"}):
                         with redirect_stdout(out):
                             rc = run_arelle_install_packages(args)
@@ -163,7 +170,101 @@ class TestArelleSetup(unittest.TestCase):
             self.assertEqual(len(calls["add"]), 1)
             _cntlr, add_path = calls["add"][0]
             self.assertEqual(Path(add_path).resolve(), downloaded.resolve())
-            self.assertIn("Downloaded 1 package", out.getvalue())
+            self.assertIn("Downloaded 1 URL file", out.getvalue())
+
+    def test_mirrors_directory_urls_then_installs(self):
+        with tempfile.TemporaryDirectory() as td:
+            xdg_home = Path(td) / "xdg"
+            download_dir = Path(td) / "downloads"
+
+            calls: dict[str, list] = {"add": [], "rebuild": [], "save": []}
+
+            class FakeWebCache:
+                def __init__(self):
+                    self.httpUserAgent = None
+
+            class FakeCntlrInstance:
+                def __init__(self, *_args, **_kwargs):
+                    self.webCache = FakeWebCache()
+                    self.userAppDir = str(Path(os.environ["XDG_CONFIG_HOME"]) / "arelle")
+
+            class FakeCntlrModule:
+                Cntlr = FakeCntlrInstance
+
+            class FakePackageManager:
+                @staticmethod
+                def init(cntlr, loadPackagesConfig=True):  # noqa: ARG001
+                    calls.setdefault("init", []).append(loadPackagesConfig)
+
+                @staticmethod
+                def addPackage(cntlr, url, packageManifestName=None):  # noqa: ARG001
+                    calls["add"].append((cntlr, url))
+                    return {"name": "sec-dei-2025", "version": "none", "identifier": "fake"}
+
+                @staticmethod
+                def rebuildRemappings(cntlr):  # noqa: ARG001
+                    calls["rebuild"].append(True)
+
+                @staticmethod
+                def save(cntlr):  # noqa: ARG001
+                    calls["save"].append(True)
+
+            fake_arelle = types.ModuleType("arelle")
+            fake_arelle.Cntlr = FakeCntlrModule
+            fake_arelle.PackageManager = FakePackageManager
+
+            base_url = "https://example.com/dei/2025/"
+            args = SimpleNamespace(
+                package=[],
+                url=[base_url],
+                download_dir=str(download_dir),
+                user_agent="Example example@example.com",
+                min_interval=0.0,
+                force=False,
+                arelle_xdg_config_home=str(xdg_home),
+            )
+
+            index_html = (
+                "<html><body>"
+                "<a href=\"dei-2025.xsd\">dei-2025.xsd</a>"
+                "<a href=\"dei-2025_def.xsd\">dei-2025_def.xsd</a>"
+                "</body></html>"
+            ).encode("utf-8")
+
+            class FakeResponse(io.BytesIO):
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, _exc_type, _exc, _tb):
+                    return False
+
+            def fake_urlopen(req):
+                url = getattr(req, "full_url", req)
+                if url == base_url:
+                    return FakeResponse(index_html)
+                if url.endswith(".xsd"):
+                    return FakeResponse(b"xsd-bytes")
+                raise AssertionError(f"Unexpected urlopen URL: {url}")
+
+            out = io.StringIO()
+            with patch.dict("sys.modules", {"arelle": fake_arelle}):
+                with patch("cmdrvl_xew.arelle_setup.urllib.request.urlopen", side_effect=fake_urlopen):
+                    with patch.dict(os.environ, {"XDG_CONFIG_HOME": "prev"}):
+                        with redirect_stdout(out):
+                            rc = run_arelle_install_packages(args)
+                        self.assertEqual(os.environ.get("XDG_CONFIG_HOME"), "prev")
+
+            self.assertEqual(rc, ExitCode.SUCCESS)
+            mirror_dir = download_dir / "_mirror" / "example.com" / "dei" / "2025"
+            self.assertTrue((mirror_dir / "dei-2025.xsd").exists())
+            self.assertTrue((mirror_dir / "dei-2025_def.xsd").exists())
+            self.assertTrue((mirror_dir / "META-INF" / "catalog.xml").exists())
+            self.assertTrue((mirror_dir / "META-INF" / "taxonomyPackage.xml").exists())
+
+            self.assertEqual(len(calls["add"]), 1)
+            _cntlr, add_path = calls["add"][0]
+            self.assertEqual(Path(add_path).resolve(), (mirror_dir / "META-INF" / "taxonomyPackage.xml").resolve())
+            self.assertIn("Mirrored 1 taxonomy directory URL", out.getvalue())
 
 
 if __name__ == "__main__":

@@ -28,7 +28,9 @@ Current engine behavior:
 - Arelle taxonomy packages can be registered for offline runs using:
   - `cmdrvl-xew arelle install-packages --arelle-xdg-config-home <DIR> --package <PATH> [--package ...] [--url <URL> ...]`
   - This writes/updates `<DIR>/arelle/taxonomyPackages.json` (Arelle's taxonomy package registry).
-  - When using `--url`, packages are downloaded to `<XDG_CONFIG_HOME>/arelle/taxonomy-packages` by default (override via `--download-dir`).
+  - When using `--url`, downloads are stored under `<XDG_CONFIG_HOME>/arelle/taxonomy-packages` by default (override via `--download-dir`).
+    - `.zip` URLs are treated as taxonomy package candidates (Arelle package zips supported).
+    - Directory URLs (trailing `/`) are mirrored by downloading all `.xsd` files and writing a local `catalog.xml`.
 
 ## 2) Recording taxonomy inputs
 

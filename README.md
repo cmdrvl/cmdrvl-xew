@@ -163,7 +163,9 @@ cmdrvl-xew arelle install-packages \
   --arelle-xdg-config-home ~/.cmdrvl-xew/arelle \
   --download-dir ~/.cmdrvl-xew/taxonomy-packages \
   --url https://xbrl.fasb.org/us-gaap/2025/us-gaap-2025.zip \
-  --url https://xbrl.fasb.org/srt/2025/srt-2025.zip
+  --url https://xbrl.fasb.org/srt/2025/srt-2025.zip \
+  --url https://xbrl.sec.gov/dei/2025/ \
+  --url https://xbrl.sec.gov/exch/2025/
 
 # Then run pack using the same config home, offline-only:
 cmdrvl-xew pack ... \
