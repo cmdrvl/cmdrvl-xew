@@ -16,6 +16,51 @@ from .pack import run_pack
 from .verify import run_verify_pack
 
 
+def _load_env_file(path: Path, *, original_env_keys: set[str], override: bool) -> None:
+    if not path.exists() or not path.is_file():
+        return
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return
+
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export "):].strip()
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key:
+            continue
+        # Keep scope narrow: only support XEW_* vars + AWS_PROFILE for S3 bundles.
+        if not (key.startswith("XEW_") or key == "AWS_PROFILE"):
+            continue
+
+        if value and len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+            value = value[1:-1]
+
+        # Do not override externally-provided env vars.
+        if key in original_env_keys:
+            continue
+        if override or key not in os.environ:
+            os.environ[key] = value
+
+
+def _load_local_env() -> None:
+    """Load optional local config from .env / .env.local in the current working directory.
+
+    Precedence (highest to lowest): external env > .env.local > .env.
+    """
+    original_keys = set(os.environ.keys())
+    _load_env_file(Path(".env"), original_env_keys=original_keys, override=False)
+    _load_env_file(Path(".env.local"), original_env_keys=original_keys, override=True)
+
+
 def validate_pack_args(args: argparse.Namespace) -> list[str]:
     """
     Validate and normalize pack command arguments.
@@ -333,6 +378,8 @@ def validate_verify_args(args: argparse.Namespace) -> list[str]:
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
+
+    _load_local_env()
 
     p = argparse.ArgumentParser(prog="cmdrvl-xew")
     sub = p.add_subparsers(dest="cmd", required=True)

@@ -217,6 +217,7 @@ cmdrvl-xew pack ... \
 ```
 
 Notes:
+- For local development, you can put these variables in `.env.local` (gitignored) and `cmdrvl-xew` will auto-load it.
 - You can install from local `--package` files, or use `--url` to download packages before installing.
 - Downloaded packages default to `<XDG_CONFIG_HOME>/arelle/taxonomy-packages` (override with `--download-dir`).
 - To bootstrap from a bundle tarball, set `--bundle-uri` (or `$XEW_ARELLE_BUNDLE_URI`) and optionally `--bundle-sha256`.
