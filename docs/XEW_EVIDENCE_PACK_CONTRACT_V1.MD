@@ -9,11 +9,13 @@ Alert-eligible canon patterns:
 - `XEW-P002` Extension Anchoring Defects (objective checks only)
 - `XEW-P004` Invalid or Discouraged Data-Type / Unit / Numeric Attributes
 - `XEW-P005` Inconsistent Taxonomy References (internal inconsistency focus)
+- `XEW-P006` Fee Exhibit Fragility (warning reclassification)
 
 Roadmap (not alert-eligible in v1):
 - `XEW-P003` Inconsistent Dimensional Application
-- `XEW-P006` Ambiguous Dimensional Member Reuse
 - `XEW-P007` Duplicate-by-Substance Contexts
+
+Note: `XEW-P006` was repurposed to Fee Exhibit Fragility; the prior draft P006 semantic pattern is retired from the v1 contract (not alert-eligible).
 
 ## Toolchain (reference implementation)
 Detection logic is implemented as:
@@ -115,6 +117,8 @@ Canonical signature rules (v1; ASCII only; use Clark notation for QNames):
   - `sig = "v1|P004|<concept_clark>|<context_id>|<unit_id_or_empty>|<issue_code>"`
 - `XEW-P005` (taxonomy references):
   - `sig = "v1|P005|<issue_code>|schemaRefSha256=<sha256(schemaRef_hrefs_joined_by_newline)>|nsSha256=<sha256(namespaces_joined_by_newline)>"`
+- `XEW-P006` (fee exhibit fragility):
+  - `sig = "v1|P006|<issue_code>|exhibit_sha256=<sha256(fee_exhibit_bytes)>|sec_error=<sec_error_code>"`
 - `XEW-P007` (duplicate-by-substance context; roadmap/non-alert in v1):
   - `sig = "v1|P007|<entity_scheme>|<entity_identifier>|<period_sig>|<dim_sig>"`
 

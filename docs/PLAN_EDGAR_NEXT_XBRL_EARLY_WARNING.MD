@@ -214,9 +214,10 @@ Threshold rule (v1): the descriptions above use qualitative terms ("materially",
 ## V1 Shipping Pattern Set (Scope Lock)
 In v1, CMD+RVL generates alert candidates only for the following target shipping patterns (subject to the Gate), listed in alert priority order (highest first):
 1. `XEW-P001` Duplicate Facts With Equivalent Context/Unit (rule basis required) — highest priority because duplicates are unambiguous structural errors
-2. `XEW-P004` Invalid or Discouraged Data-Type / Unit / Numeric Attributes (rule-basis required) — second priority for objective type/unit violations
-3. `XEW-P005` Inconsistent Taxonomy References (rule-basis required; focus on internal inconsistency in v1) — third priority for namespace/schemaRef mismatches
-4. `XEW-P002` Extension Anchoring Defects (objective checks only; rule basis required; no "semantic unrelatedness" claims) — fourth priority; often requires more context to assess severity
+2. `XEW-P006` Fee Exhibit Fragility (objective checks; rule basis required) — flags fee-exhibit warning conditions being reclassified as suspension-level errors effective March 16, 2026
+3. `XEW-P004` Invalid or Discouraged Data-Type / Unit / Numeric Attributes (rule-basis required) — objective type/unit violations
+4. `XEW-P005` Inconsistent Taxonomy References (rule-basis required; focus on internal inconsistency in v1) — namespace/schemaRef mismatches
+5. `XEW-P002` Extension Anchoring Defects (objective checks only; rule basis required; no "semantic unrelatedness" claims) — often requires more context to assess severity
 
 When multiple patterns are detected in one filing and only one alert is sent (the default), select the highest-priority pattern.
 
@@ -224,7 +225,6 @@ Gate (v1): if a defensible rule basis cannot be pinned for a listed pattern, it 
 
 Other patterns remain documented as candidates, but are treated as roadmap until proven low-noise:
 - `XEW-P003` Inconsistent Dimensional Application (likely useful; high false-positive risk without strict comparability rules)
-- `XEW-P006` Ambiguous Dimensional Member Reuse (semantic; not safe to auto-alert)
 - `XEW-P007` Duplicate-by-Substance Contexts (potentially useful; log internally in v1 but do not auto-alert due to high noise risk and unclear reject mechanism)
 
 ## XEW Pattern Catalog
@@ -291,17 +291,12 @@ Note (v1): "v1 status: ship" means "in the target v1 shipping set; it ships only
 - Break trigger examples: taxonomy refresh; validator/enforcement tightening; extension reuse/expansion.
 - Evidence must include: the schemaRef href(s)/namespace(s) observed; the filing artifacts where they appear; and the rule basis referenced in the Evidence Pack.
 
-### XEW-P006: Ambiguous Dimensional Member Reuse
-- v1 status: roadmap (semantic; not safe to auto-alert).
-- Signal: the same dimension member is reused in ways that create ambiguity across disclosures (e.g., a generic "Other" member used as a catch-all in multiple unrelated contexts, or a custom member reused with inconsistent meaning across statements/footnotes).
-- Why fragile: semantic ambiguity is often tolerated until disclosure structure changes, at which point conflicts can surface interpretability issues and downstream tooling disagreements.
-- Break trigger examples: segment changes; roll-forward edits; adding new members; enforcement tightening around dimensional validity.
-- Evidence must include: the member QName; examples of where it is used (concepts/roles/contexts); and the specific ambiguity claim (what meaning conflict exists).
-- Research notes (non-shipping; objective signals to explore):
-  - Same member QName appears under multiple distinct domain parents in the definition linkbase (record the parent domains).
-  - Same member QName appears across multiple presentation roles / hypercubes with materially different primary item sets (record role URIs + counts).
-  - Same member QName used with divergent context dimension sets (record distinct dimension-member sets and counts).
-  - Candidate metrics to capture for review: number of distinct roles, number of distinct primary items, number of distinct context dimension sets.
+### XEW-P006: Fee Exhibit Fragility
+- v1 status: ship (objective checks; rule basis required; time-sensitive enforcement shift effective March 16, 2026).
+- Signal: an accepted filing's structured filing-fee exhibit contains objective fee-exhibit warning conditions on rules that EDGAR has announced will be enforced as suspension-level errors starting March 16, 2026.
+- Why fragile: the artifact was accepted under a warning-tolerant regime; the same defect becomes submission-blocking under the announced enforcement shift.
+- Break trigger examples: validator/enforcement tightening (fee-exhibit warnings → suspensions effective 2026-03-16).
+- Evidence must include: the fee exhibit artifact bytes + sha256; the objective condition detected (e.g., missing required FFD facts); the mapped SEC error ID/code (when known); and a two-layer rule basis (underlying rule + reclassification announcement) pinned in the Evidence Pack.
 
 ### XEW-P007: Duplicate-by-Substance Contexts
 - v1 status: roadmap (log as an internal observation; do not auto-alert due to high noise risk and unclear reject mechanism).
@@ -658,7 +653,7 @@ Future items are not eligible for v1 unless they meet explicit gates:
 - EDGAR-driven fetch mode: SEC-compliant User-Agent + rate limiting, deterministic artifact selection, and recorded retrieval metadata.
 - Severity tiers (v2 schema): versioned schema update plan, no v1 output changes, and a migration note in the contract.
 - Expanded form coverage (20-F/6-K/8-K): ingestion rules + comparator policy per form, plus golden Evidence Pack fixtures.
-- Roadmap patterns (P003/P006/P007): canonical signature definitions, noise evaluation plan, and log-only behavior before alerting.
+- Roadmap patterns (P003/P007): canonical signature definitions, noise evaluation plan, and log-only behavior before alerting.
 
 ---
 
