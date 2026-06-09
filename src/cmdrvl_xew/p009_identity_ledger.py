@@ -212,6 +212,7 @@ class IdentityObservationRef:
     strong_keys: tuple[IdentityKey, ...]
     weak_key: str
     registry_lookup: P009RegistryLookup
+    weak_key_fields: tuple[tuple[str, str], ...] = ()
 
     @property
     def sort_key(self) -> tuple[str, str, str, str, int, str]:
@@ -240,6 +241,8 @@ class IdentityObservationRef:
             "weak_key": self.weak_key,
             "registry_lookup": self.registry_lookup.to_json(),
         }
+        if self.weak_key_fields:
+            data["weak_key_fields"] = [{"field": key, "value": value} for key, value in self.weak_key_fields]
         if self.accession:
             data["accession"] = self.accession
         if self.source_record_id:
@@ -589,6 +592,7 @@ def _observation_ref(
         strong_keys=strong_keys,
         weak_key=_weak_key(observation),
         registry_lookup=registry_lookup,
+        weak_key_fields=observation.weak_evidence.signature_fields,
     )
 
 
@@ -990,6 +994,7 @@ def _cap_ref_source_paths(ref: IdentityObservationRef, limit: int) -> IdentityOb
         strong_keys=ref.strong_keys,
         weak_key=ref.weak_key,
         registry_lookup=ref.registry_lookup,
+        weak_key_fields=ref.weak_key_fields,
     )
 
 

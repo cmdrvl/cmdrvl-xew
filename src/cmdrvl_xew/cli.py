@@ -16,6 +16,7 @@ from .flatten import run_flatten
 from .identity_fragility import run_p008_identity_fragility
 from .orchestrator_manifest import run_p008_manifest_from_orchestrator
 from .p008_scan import run_p008_scan_corpus
+from .p009_scan import run_p009_scan_corpus
 from .pack import run_pack
 from .registry_materialize import run_p008_materialize_registry
 from .s3_source import run_fetch_s3
@@ -676,6 +677,18 @@ def main(argv: list[str] | None = None) -> int:
     p008_manifest.add_argument("--cmdrvl-project", help="cmdrvl-cli project path for live orchestrator queries")
     p008_manifest.add_argument("--dry-run", action="store_true")
 
+    p009 = sub.add_parser("p009", help="Manage XEW-P009 helper artifacts")
+    p009_sub = p009.add_subparsers(dest="p009_cmd", required=True)
+    p009_scan = p009_sub.add_parser(
+        "scan-corpus",
+        help="Scan a source-neutral corpus for temporal instrument identity fragility",
+    )
+    p009_scan.add_argument("--manifest", required=True, help="P009 corpus manifest JSONL/CSV")
+    p009_scan.add_argument("--observations", help="P009 normalized observations JSONL/CSV")
+    p009_scan.add_argument("--registry-snapshot", help="Local canon/OpenFIGI registry snapshot JSON")
+    p009_scan.add_argument("--out-dir", required=True)
+    p009_scan.add_argument("--limit", type=int)
+
     args = p.parse_args(argv)
 
     if args.cmd == "flatten":
@@ -719,6 +732,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.p008_cmd == "manifest-from-orchestrator":
             return run_p008_manifest_from_orchestrator(args)
         p.error(f"unknown p008 command: {args.p008_cmd}")
+    if args.cmd == "p009":
+        if args.p009_cmd == "scan-corpus":
+            return run_p009_scan_corpus(args)
+        p.error(f"unknown p009 command: {args.p009_cmd}")
 
     p.error(f"unknown command: {args.cmd}")
     return ExitCode.CONFIG_ERROR

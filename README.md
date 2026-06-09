@@ -282,6 +282,25 @@ cmdrvl-xew p008 scan-corpus \
 
 The scanner emits stable JSONL and CSV summaries ranked by resolved or ambiguous P008 member count, max collapse group size, distinct instrument-kind count, newest filed date, and accession.
 
+For temporal identity drift (XEW-P009), start from a provider-neutral corpus manifest plus normalized observations. The scanner groups observations by scope and time, applies the P009 ledger/alias-graph rules, ranks fragile scopes, and emits seed identifiers for local canon/OpenFIGI registry materialization. It never calls SEC, OpenFIGI, canon, an orchestrator, a warehouse, HTTP, or an LLM.
+
+```bash
+cmdrvl-xew p009 scan-corpus \
+  --manifest /tmp/p009-corpus-manifest.jsonl \
+  --observations /tmp/p009-observations.jsonl \
+  --registry-snapshot /tmp/p009-openfigi-snapshot.json \
+  --out-dir /tmp/p009-scan
+```
+
+P009 scan outputs:
+- `p009_scan_candidates.v1.jsonl`: ranked candidate scopes with event details, source ids, observation ids, seed identifiers, and pack-input plans.
+- `p009_scan_summary.v1.csv`: compact rank/actionability summary.
+- `p009_registry_seeds.v1.jsonl`: exact CUSIP/ISIN/SEDOL/FIGI/typed-identifier seeds for local registry maintenance.
+- `p009_pack_inputs.v1.json`: source-neutral handoff for later Evidence Pack generation.
+- `diagnostics.json`: input hashes, row counts, candidate counts, and deterministic diagnostics.
+
+If `--registry-snapshot` is omitted, P009 still scans deterministically and reports unresolved weak-key collisions or missing bridge evidence. A registry snapshot can convert a CUSIP-to-FIGI history into a proven local bridge, but stable CUSIP/ISIN continuity is not ranked as a fragility candidate merely because the registry contains a matching row.
+
 ### Install taxonomy packages for offline production runs
 
 For deterministic production use, run Arelle in `offline_only` mode with a pinned set of local taxonomy packages (e.g., US-GAAP, DEI, SRT, SEC enumerations).
