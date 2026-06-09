@@ -31,6 +31,7 @@ from .pack_manifest import PackManifestBuilder
 from .toolchain import ToolchainRecorder
 from .detectors.registry import get_registry
 from .detectors._base import DetectorContext
+from .detectors.p009_identity_drift import generated_artifact_from_p009_findings
 from .metadata import extract_metadata
 from .markers import (
     AnchoringCoverageSnapshot,
@@ -374,6 +375,9 @@ def _run_xew_detection(primary_path: Path, artifacts_dir: Path, context_metadata
         "gate_enforcement": True,
         "p001_conflict_mode": context_metadata.get("p001_conflict_mode") or "rounded",
         "p008_registry_snapshot": context_metadata.get("p008_registry_snapshot") or "",
+        "p009_registry_snapshot": context_metadata.get("p009_registry_snapshot") or "",
+        "p009_observations": context_metadata.get("p009_observations") or [],
+        "p009_observation_artifacts": context_metadata.get("p009_observation_artifacts") or {},
     }
 
     # Include comparator selection data for marker detectors
@@ -898,6 +902,61 @@ def _write_p008_generated_artifacts(
     ]
 
 
+def _write_p009_generated_artifacts(
+    *,
+    out_dir: Path,
+    findings: list,
+    generated_at: str,
+) -> list[ArtifactHash]:
+    document = generated_artifact_from_p009_findings(findings, generated_at=generated_at)
+    if document is None:
+        return []
+
+    rel_path = Path("generated") / "instrument_identity_drift.v1.json"
+    abs_path = out_dir / rel_path
+    write_json(abs_path, document)
+    sha, size = sha256_file(abs_path)
+    return [
+        ArtifactHash(
+            path=rel_path.as_posix(),
+            role="generated",
+            sha256=sha,
+            bytes=size,
+        )
+    ]
+
+
+def _copy_p009_observation_inputs(
+    *,
+    out_dir: Path,
+    input_paths: list[str],
+    seen_paths: set[str],
+    pack_artifacts: list[ArtifactHash],
+) -> list[str]:
+    packed_paths: list[str] = []
+    for index, path_text in enumerate(input_paths, start=1):
+        src = Path(path_text).resolve()
+        dest_rel = Path("artifacts") / "p009_observations" / f"{index:03d}_{src.name}"
+        dest_rel_str = dest_rel.as_posix()
+        if dest_rel_str in seen_paths:
+            exit_processing_error(f"Artifact path collision in pack: {dest_rel_str}")
+        seen_paths.add(dest_rel_str)
+        dest_abs = out_dir / dest_rel
+        dest_abs.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dest_abs)
+        digest, size = sha256_file(dest_abs)
+        pack_artifacts.append(
+            ArtifactHash(
+                path=dest_rel_str,
+                role="other",
+                sha256=digest,
+                bytes=size,
+            )
+        )
+        packed_paths.append(str(dest_abs))
+    return packed_paths
+
+
 def _validate_pack_args(args: argparse.Namespace) -> None:
     """Validate all required pack command arguments with clear error messages."""
     errors = []
@@ -979,6 +1038,13 @@ def _validate_pack_args(args: argparse.Namespace) -> None:
             validation_errors.append(f"--p008-registry-snapshot: File does not exist: {p008_snapshot}")
         elif not snapshot_path.is_file():
             validation_errors.append(f"--p008-registry-snapshot: Path is not a file: {p008_snapshot}")
+
+    for p009_path in getattr(args, "p009_observations", None) or []:
+        observation_path = Path(p009_path)
+        if not observation_path.exists():
+            validation_errors.append(f"--p009-observations: File does not exist: {p009_path}")
+        elif not observation_path.is_file():
+            validation_errors.append(f"--p009-observations: Path is not a file: {p009_path}")
 
     # Validate URL formats (basic check)
     if args.primary_document_url and not args.primary_document_url.strip():
@@ -1108,6 +1174,17 @@ def run_pack(args: argparse.Namespace) -> int:
             )
         )
         p008_registry_snapshot_path = str(snapshot_dst_abs)
+
+    p009_observation_paths = _copy_p009_observation_inputs(
+        out_dir=out_dir,
+        input_paths=list(getattr(args, "p009_observations", None) or []),
+        seen_paths=seen_paths,
+        pack_artifacts=pack_artifacts,
+    )
+    p009_observation_artifacts = {
+        path: Path(path).relative_to(out_dir).as_posix()
+        for path in p009_observation_paths
+    }
 
     comparator_primary_dst_rel = None
     if args.comparator_accession:
@@ -1293,6 +1370,7 @@ def run_pack(args: argparse.Namespace) -> int:
         "p001_conflict_mode": p001_conflict_mode,
         "p008_registry_snapshot": bool(p008_registry_snapshot_path),
         "p008_require_registry": bool(getattr(args, "p008_require_registry", False)),
+        "p009_observations": bool(p009_observation_paths),
     }
 
     findings_toolchain_obj = toolchain_recorder.record_toolchain(findings_toolchain_config)
@@ -1313,6 +1391,17 @@ def run_pack(args: argparse.Namespace) -> int:
 
     toolchain_file_obj["marker_thresholds"] = marker_thresholds
     toolchain_file_obj["history_window"] = history_metadata
+    p009_input_metadata = []
+    for path in p009_observation_paths:
+        digest, size = sha256_file(Path(path))
+        p009_input_metadata.append(
+            {
+                "path": p009_observation_artifacts[path],
+                "sha256": digest,
+                "bytes": size,
+            }
+        )
+    toolchain_file_obj["p009_observation_inputs"] = p009_input_metadata
     toolchain_file_obj["comparator_policy"] = {
         "form": args.form,
         "base_form": comparator_policy_result.base_form,
@@ -1476,6 +1565,9 @@ def run_pack(args: argparse.Namespace) -> int:
                 "disable_arelle": bool(getattr(args, "no_arelle", False)),
                 "arelle_xdg_config_home": getattr(args, "arelle_xdg_config_home", None),
                 "p008_registry_snapshot": p008_registry_snapshot_path or "",
+                "p009_registry_snapshot": p008_registry_snapshot_path or "",
+                "p009_observations": p009_observation_paths,
+                "p009_observation_artifacts": p009_observation_artifacts,
                 "comparator_selection": {
                     "selected_comparator": selection_result.selected_comparator,
                     "history_window": selection_result.history_window,
@@ -1510,10 +1602,20 @@ def run_pack(args: argparse.Namespace) -> int:
         out_dir=out_dir,
     )
 
-    generated_artifacts = _write_p008_generated_artifacts(
-        out_dir=out_dir,
-        findings=xbrl_findings,
-        generated_at=retrieved_at,
+    generated_artifacts = []
+    generated_artifacts.extend(
+        _write_p008_generated_artifacts(
+            out_dir=out_dir,
+            findings=xbrl_findings,
+            generated_at=retrieved_at,
+        )
+    )
+    generated_artifacts.extend(
+        _write_p009_generated_artifacts(
+            out_dir=out_dir,
+            findings=xbrl_findings,
+            generated_at=retrieved_at,
+        )
     )
     for generated in generated_artifacts:
         content_type, _ = mimetypes.guess_type(generated.path)

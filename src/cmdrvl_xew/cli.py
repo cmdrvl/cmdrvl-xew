@@ -264,6 +264,13 @@ def validate_pack_args(args: argparse.Namespace) -> list[str]:
         elif not snapshot_path.is_file():
             errors.append(f"P008 registry snapshot is not a file: {p008_snapshot}")
 
+    for p009_path in getattr(args, "p009_observations", None) or []:
+        observation_path = Path(p009_path)
+        if not observation_path.exists():
+            errors.append(f"P009 observations file does not exist: {p009_path}")
+        elif not observation_path.is_file():
+            errors.append(f"P009 observations path is not a file: {p009_path}")
+
     # Validate output directory constraints
     try:
         out_path = Path(args.out)
@@ -490,6 +497,14 @@ def main(argv: list[str] | None = None) -> int:
         "--p008-require-registry",
         action="store_true",
         help="Fail pack generation when XEW-P008 is enabled but no local registry snapshot is supplied.",
+    )
+    pack.add_argument(
+        "--p009-observations",
+        action="append",
+        help=(
+            "Source-neutral P009 observations JSONL/CSV. Repeatable. Files are copied into the "
+            "Evidence Pack and consumed locally; pack never calls OpenFIGI, canon, SEC, or a parser-specific provider."
+        ),
     )
 
     verify = sub.add_parser("verify-pack", help="Verify an Evidence Pack")

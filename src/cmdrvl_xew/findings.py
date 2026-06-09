@@ -172,6 +172,8 @@ class FindingsWriter:
             instance_json["data"] = self._format_p005_data(instance.data)
         elif pattern_id == "XEW-P008":
             instance_json["data"] = self._format_p008_data(instance.data)
+        elif pattern_id == "XEW-P009":
+            instance_json["data"] = self._format_p009_data(instance.data)
         else:
             # Generic data handling for unknown patterns
             instance_json["data"] = instance.data
@@ -549,6 +551,127 @@ class FindingsWriter:
                     fact.get("value", ""),
                 ),
             )
+        return result
+
+    def _format_p009_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Format P009-specific instance data with schema-bounded fields."""
+        result: Dict[str, Any] = {
+            "issue_codes": sorted(str(code) for code in data.get("issue_codes", [])),
+            "continuity_class": str(data.get("continuity_class", "")),
+            "source_scope": self._format_p009_source_scope(data.get("source_scope", {})),
+            "event_count": int(data.get("event_count", 0)),
+            "events": [],
+        }
+
+        events = data.get("events", [])
+        if isinstance(events, list):
+            result["events"] = sorted(
+                (self._format_p009_event(event) for event in events if isinstance(event, dict)),
+                key=lambda event: str(event.get("event_id", "")),
+            )
+
+        if isinstance(data.get("registry_snapshot"), dict):
+            result["registry_snapshot"] = data["registry_snapshot"]
+
+        repair = data.get("deterministic_repair")
+        if isinstance(repair, list) and repair:
+            result["deterministic_repair"] = sorted(
+                (
+                    {"target": str(item.get("target", "")), "action": str(item.get("action", ""))}
+                    for item in repair
+                    if isinstance(item, dict)
+                ),
+                key=lambda item: (item["target"], item["action"]),
+            )
+
+        diagnostics = data.get("diagnostics")
+        if isinstance(diagnostics, list) and diagnostics:
+            result["diagnostics"] = sorted(
+                (
+                    {
+                        "issue_code": str(item.get("issue_code", "")),
+                        "message": str(item.get("message", "")),
+                    }
+                    for item in diagnostics
+                    if isinstance(item, dict)
+                ),
+                key=lambda item: (item["issue_code"], item["message"]),
+            )
+
+        return result
+
+    def _format_p009_source_scope(self, scope: Any) -> Dict[str, Any]:
+        raw = scope if isinstance(scope, dict) else {}
+        accessions = raw.get("accessions", [])
+        if not isinstance(accessions, list):
+            accessions = []
+        result: Dict[str, Any] = {
+            "scope_key": str(raw.get("scope_key", "")),
+            "accessions": sorted(str(value) for value in accessions if str(value)),
+        }
+        for key in ("source_family", "source_adapter", "series_id", "series_name", "cik"):
+            value = raw.get(key)
+            if value:
+                result[key] = str(value)
+        return result
+
+    def _format_p009_event(self, event: Dict[str, Any]) -> Dict[str, Any]:
+        result: Dict[str, Any] = {
+            "event_id": str(event.get("event_id", "")),
+            "issue_codes": sorted(str(code) for code in event.get("issue_codes", [])),
+            "continuity_class": str(event.get("continuity_class", "")),
+            "basis_before": self._format_p009_basis(event.get("basis_before", {})),
+            "basis_after": self._format_p009_basis(event.get("basis_after", {})),
+            "observations": [],
+        }
+        registry_status = event.get("registry_status")
+        if registry_status:
+            result["registry_status"] = str(registry_status)
+        observations = event.get("observations", [])
+        if isinstance(observations, list):
+            result["observations"] = sorted(
+                (self._format_p009_observation_ref(ref) for ref in observations if isinstance(ref, dict)),
+                key=lambda ref: (
+                    str(ref.get("accession", "")),
+                    str(ref.get("report_period", "")),
+                    int(ref.get("observation_ordinal", 0)),
+                    ",".join(str(path) for path in ref.get("source_paths", [])),
+                ),
+            )
+        candidates = event.get("registry_candidates")
+        if isinstance(candidates, list) and candidates:
+            result["registry_candidates"] = sorted(
+                (candidate for candidate in candidates if isinstance(candidate, dict)),
+                key=lambda candidate: (
+                    str(candidate.get("figi", "")),
+                    str(candidate.get("candidate_id", "")),
+                ),
+            )
+        return result
+
+    def _format_p009_basis(self, basis: Any) -> Dict[str, str]:
+        raw = basis if isinstance(basis, dict) else {}
+        result: Dict[str, str] = {"basis_type": str(raw.get("basis_type", "absent"))}
+        for key in ("basis_value", "id_type", "registry_status"):
+            value = raw.get(key)
+            if value:
+                result[key] = str(value)
+        return result
+
+    def _format_p009_observation_ref(self, ref: Dict[str, Any]) -> Dict[str, Any]:
+        source_paths = ref.get("source_paths", [])
+        if not isinstance(source_paths, list):
+            source_paths = []
+        result: Dict[str, Any] = {
+            "accession": str(ref.get("accession", "")),
+            "observation_ordinal": int(ref.get("observation_ordinal", 0)),
+            "identity_basis": self._format_p009_basis(ref.get("identity_basis", {})),
+            "source_paths": sorted(str(path) for path in source_paths if str(path)),
+        }
+        for key in ("report_period", "source_family", "source_adapter", "issuer_name", "title_or_description"):
+            value = ref.get(key)
+            if value:
+                result[key] = str(value)
         return result
 
     def _write_json_deterministically(self, document: Dict[str, Any]) -> None:

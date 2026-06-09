@@ -19,6 +19,7 @@ PATTERN_PRIORITIES = {
     "XEW-P005": 3,  # Taxonomy inconsistencies - medium priority (structural)
     "XEW-P002": 4,  # Anchoring defects - lower priority (taxonomy quality)
     "XEW-P008": 5,  # Instrument identity collapse - review-grade identity fragility
+    "XEW-P009": 6,  # Temporal instrument identity drift - review-grade join fragility
 }
 
 
