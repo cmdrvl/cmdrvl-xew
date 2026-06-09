@@ -10,7 +10,7 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +134,7 @@ def extract_metadata(primary_path: Path) -> ExtractedMetadata:
         # Build metadata from extracted facts
         metadata = ExtractedMetadata()
         metadata.primary_document_path = str(primary_path)
-        metadata.extraction_timestamp = datetime.utcnow().isoformat() + 'Z'
+        metadata.extraction_timestamp = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
         _populate_entity_info(metadata.entity, facts, metadata.source_provenance)
         _populate_filing_info(metadata.filing, facts, metadata.source_provenance)
@@ -194,7 +194,7 @@ def validate_against_cli_args(metadata: ExtractedMetadata,
     return {
         'has_conflicts': len(conflicts) > 0,
         'conflicts': conflicts,
-        'validation_timestamp': datetime.utcnow().isoformat() + 'Z'
+        'validation_timestamp': datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     }
 
 

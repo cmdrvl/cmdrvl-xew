@@ -10,9 +10,15 @@ from urllib.parse import urlparse
 
 from .exit_codes import ExitCode
 from .arelle_setup import run_arelle_install_packages
+from .canon_snapshot import run_p008_snapshot_from_canon
 from .fetch import run_fetch
 from .flatten import run_flatten
+from .identity_fragility import run_p008_identity_fragility
+from .orchestrator_manifest import run_p008_manifest_from_orchestrator
+from .p008_scan import run_p008_scan_corpus
 from .pack import run_pack
+from .registry_materialize import run_p008_materialize_registry
+from .s3_source import run_fetch_s3
 from .verify import run_verify_pack
 from .doctor import run_doctor
 
@@ -501,6 +507,16 @@ def main(argv: list[str] | None = None) -> int:
     fetch.add_argument("--min-interval", type=float, default=0.2, help="Minimum seconds between requests (default: 0.2)")
     fetch.add_argument("--force", action="store_true", help="Overwrite existing files in output directory")
 
+    fetch_s3 = sub.add_parser("fetch-s3", help="Materialize cached EDGAR artifacts from S3 into a flat directory")
+    fetch_s3.add_argument("--s3-uri", help="S3 URI for extracted/ prefix or xbrl/ .nc object")
+    fetch_s3.add_argument("--bucket", default="edgar-data-full", help="S3 bucket when constructing URI from date/accession")
+    fetch_s3.add_argument("--date-partition", help="Filing date partition YYYYMMDD")
+    fetch_s3.add_argument("--accession", help="EDGAR accession NNNNNNNNNN-NN-NNNNNN")
+    fetch_s3.add_argument("--source-layout", choices=["extracted", "xbrl", "auto"], default="auto")
+    fetch_s3.add_argument("--aws-profile", default=os.environ.get("AWS_PROFILE") or None)
+    fetch_s3.add_argument("--out", required=True, help="Output flat artifact directory")
+    fetch_s3.add_argument("--force", action="store_true", help="Overwrite matching output files in an existing directory")
+
     doctor = sub.add_parser("doctor", help="Check environment configuration for deterministic packs")
     doctor.add_argument(
         "--arelle-xdg-config-home",
@@ -585,6 +601,81 @@ def main(argv: list[str] | None = None) -> int:
         help="Overwrite existing downloaded files.",
     )
 
+    p008 = sub.add_parser("p008", help="Manage XEW-P008 helper artifacts")
+    p008_sub = p008.add_subparsers(dest="p008_cmd", required=True)
+    p008_snapshot = p008_sub.add_parser(
+        "snapshot-from-canon",
+        help="Convert a local canon OpenFIGI registry directory into a P008 snapshot JSON",
+    )
+    p008_snapshot.add_argument("--registry-dir", required=True, help="canon registry build output directory")
+    p008_snapshot.add_argument("--out", required=True, help="Output P008 registry snapshot JSON")
+    p008_snapshot.add_argument(
+        "--overlay",
+        help="Optional local JSON overlay adding security_title, canonical_signature, exchange, or other P008 row fields",
+    )
+    p008_snapshot.add_argument("--snapshot-id", help="Stable snapshot identifier; default uses canon registry id/version")
+    p008_snapshot.add_argument("--generated-at", help="UTC ISO timestamp; default is current UTC")
+    p008_materialize = p008_sub.add_parser(
+        "materialize-registry",
+        help="Build corpus-scoped CUSIP/ISIN/SEDOL seed files and optionally run canon registry build",
+    )
+    p008_materialize.add_argument("--corpus-id", required=True)
+    p008_materialize.add_argument("--out-dir", required=True)
+    p008_materialize.add_argument("--filing-manifest", help="CSV or JSONL with optional cusip, isin, and sedol columns")
+    p008_materialize.add_argument("--seed-file", action="append", help="CSV/JSONL seed file with exactly one cusip/isin/sedol column")
+    p008_materialize.add_argument("--version", required=True, help="Registry version passed to canon registry build")
+    p008_materialize.add_argument("--provider-source", default="openfigi", help="canon registry build source (default: openfigi)")
+    p008_materialize.add_argument("--provider-config", action="append", help="Provider option key=value; repeatable")
+    p008_materialize.add_argument("--canon-bin", default="canon", help="canon binary to use when --run-canon is set")
+    p008_materialize.add_argument("--run-canon", action="store_true", help="Actually run canon registry build after writing seed files")
+    p008_materialize.add_argument("--incremental", action="store_true", help="Pass --incremental to canon registry build")
+    p008_materialize.add_argument(
+        "--allow-live-provider",
+        action="store_true",
+        help="Allow maintenance-time live OpenFIGI provider use when no local twin base_url is configured",
+    )
+    p008_identity = p008_sub.add_parser(
+        "prove-identity-fragility",
+        help="Run or dry-run the cached MSFT P008 identity-fragility proof path",
+    )
+    p008_identity.add_argument("--work-dir", required=True)
+    p008_identity.add_argument("--bucket", default="edgar-data-full")
+    p008_identity.add_argument("--source-layout", choices=["extracted", "xbrl", "auto"], default="extracted")
+    p008_identity.add_argument("--aws-profile", default=os.environ.get("AWS_PROFILE") or None)
+    p008_identity.add_argument("--taxonomy-home", help="Arelle XDG config home with installed taxonomy packages")
+    p008_identity.add_argument("--pack-id", default="XEW-P008-MSFT-20260429")
+    p008_identity.add_argument("--retrieved-at", default="2026-06-09T00:00:00Z")
+    p008_identity.add_argument("--p008-registry-snapshot", help="Optional local canon/OpenFIGI P008 snapshot")
+    p008_identity.add_argument("--p008-require-registry", action="store_true")
+    p008_identity.add_argument("--dry-run", action="store_true")
+    p008_identity.add_argument("--force", action="store_true")
+    p008_identity.add_argument("--verbose", action="store_true", help="Stream raw fetch/pack/verify step output")
+    p008_scan = p008_sub.add_parser(
+        "scan-corpus",
+        help="Rank a filing corpus for P008 identity-fragility candidates",
+    )
+    p008_scan.add_argument("--manifest", required=True, help="CSV or JSONL corpus manifest")
+    p008_scan.add_argument("--out-dir", required=True)
+    p008_scan.add_argument("--run-packs", action="store_true", help="Run fetch-s3 and pack for rows without pack_path")
+    p008_scan.add_argument("--aws-profile", default=os.environ.get("AWS_PROFILE") or None)
+    p008_scan.add_argument("--bucket", default="edgar-data-full")
+    p008_scan.add_argument("--taxonomy-home")
+    p008_scan.add_argument("--p008-registry-snapshot")
+    p008_scan.add_argument("--max-filings", type=int)
+    p008_scan.add_argument("--keep-packs", action="store_true")
+    p008_scan.add_argument("--continue-on-error", action="store_true")
+    p008_scan.add_argument("--fail-fast", action="store_true")
+    p008_manifest = p008_sub.add_parser(
+        "manifest-from-orchestrator",
+        help="Normalize a cmdrvl-cli orchestrator filing-list response into a P008 corpus manifest",
+    )
+    p008_manifest.add_argument("--query", required=True)
+    p008_manifest.add_argument("--tenant", default="salt")
+    p008_manifest.add_argument("--out", required=True)
+    p008_manifest.add_argument("--response-json", help="Use a saved orchestrator JSON response instead of querying")
+    p008_manifest.add_argument("--cmdrvl-project", help="cmdrvl-cli project path for live orchestrator queries")
+    p008_manifest.add_argument("--dry-run", action="store_true")
+
     args = p.parse_args(argv)
 
     if args.cmd == "flatten":
@@ -608,12 +699,26 @@ def main(argv: list[str] | None = None) -> int:
         return run_verify_pack(args)
     if args.cmd == "fetch":
         return run_fetch(args)
+    if args.cmd == "fetch-s3":
+        return run_fetch_s3(args)
     if args.cmd == "doctor":
         return run_doctor(args)
     if args.cmd == "arelle":
         if args.arelle_cmd == "install-packages":
             return run_arelle_install_packages(args)
         p.error(f"unknown arelle command: {args.arelle_cmd}")
+    if args.cmd == "p008":
+        if args.p008_cmd == "snapshot-from-canon":
+            return run_p008_snapshot_from_canon(args)
+        if args.p008_cmd == "materialize-registry":
+            return run_p008_materialize_registry(args)
+        if args.p008_cmd == "prove-identity-fragility":
+            return run_p008_identity_fragility(args)
+        if args.p008_cmd == "scan-corpus":
+            return run_p008_scan_corpus(args)
+        if args.p008_cmd == "manifest-from-orchestrator":
+            return run_p008_manifest_from_orchestrator(args)
+        p.error(f"unknown p008 command: {args.p008_cmd}")
 
     p.error(f"unknown command: {args.cmd}")
     return ExitCode.CONFIG_ERROR

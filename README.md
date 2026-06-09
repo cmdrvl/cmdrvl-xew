@@ -72,7 +72,19 @@ source .venv/bin/activate
 pip install -e .
 ```
 
-Optional schema validation during pack verification:
+Production Arelle runs use a pinned Arelle runtime:
+
+```bash
+pip install -e '.[arelle]'
+```
+
+For production plus schema validation:
+
+```bash
+pip install -e '.[prod]'
+```
+
+Optional schema validation only:
 
 ```bash
 pip install -e '.[jsonschema]'
@@ -127,6 +139,33 @@ Fetch flags:
 - Required: `--cik`, `--accession`, `--out`, `--user-agent`
 - Optional: `--min-interval`, `--force`
 
+### Fetch Cached S3 Accession Artifacts
+
+`fetch-s3` materializes cached EDGAR artifacts from object storage into the same flat directory shape consumed by `pack`. It never calls SEC EDGAR.
+
+```bash
+cmdrvl-xew fetch-s3 \
+  --bucket edgar-data-full \
+  --date-partition 20260429 \
+  --accession 0001193125-26-191507 \
+  --source-layout extracted \
+  --aws-profile salt_profile \
+  --out /tmp/msft-flat
+
+cmdrvl-xew fetch-s3 \
+  --s3-uri s3://edgar-data-full/xbrl/20260429/0001193125-26-191507.nc \
+  --source-layout xbrl \
+  --aws-profile salt_profile \
+  --out /tmp/msft-flat-from-nc
+```
+
+Supported layouts:
+- `extracted`: typed EDGAR directories under `extracted/YYYYMMDD/ACCESSION/`.
+- `xbrl`: complete-submission SGML object at `xbrl/YYYYMMDD/ACCESSION.nc`; XEW extracts it deterministically before flattening.
+- `auto`: prefer the extracted prefix when present; fall back to the `.nc` object.
+
+The flat output includes `_xew_s3_provenance.json` with bucket/key/etag/last_modified/content_length metadata. When the `.nc` path is used, the provenance also includes SGML extraction metadata.
+
 ### Generate a Pack (artifact-driven)
 
 Artifact-driven mode is the default posture (recommended for production systems that already stage filing artifacts in object storage).
@@ -157,6 +196,91 @@ Pack flags:
 - Optional: `--issuer-name`, `--period-end`, `--retrieved-at`, `--arelle-version`, `--resolution-mode`, `--p001-conflict-mode`, `--p008-registry-snapshot`, `--p008-require-registry`, `--require-arelle`, `--no-arelle`, `--arelle-xdg-config-home`, `--derive-artifact-urls`
 - History window (repeatable, all-or-nothing): `--history-accession`, `--history-primary-document-url`, `--history-primary-artifact-path`
 - Comparator (optional, all-or-nothing): `--comparator-accession`, `--comparator-primary-document-url`, `--comparator-primary-artifact-path`
+
+### Build P008 Registry Snapshots
+
+`pack` consumes a local P008 snapshot only. OpenFIGI/canon provider calls are allowed only before pack generation, during registry maintenance.
+
+Create corpus-scoped seed files and a registry materialization manifest:
+
+```bash
+cmdrvl-xew p008 materialize-registry \
+  --corpus-id msft-proof \
+  --filing-manifest /path/to/corpus.jsonl \
+  --out-dir /tmp/msft-registry-work \
+  --version 2026.06.09 \
+  --provider-config base_url=http://127.0.0.1:9000/v3/mapping
+```
+
+Add `--run-canon` to execute `canon registry build` for each non-empty CUSIP/ISIN/SEDOL seed file. For OpenFIGI, `--run-canon` requires a local twin `base_url` unless `--allow-live-provider` is set explicitly for a maintenance run.
+
+Convert canon registry output into the local snapshot consumed by `pack`:
+
+```bash
+cmdrvl-xew p008 snapshot-from-canon \
+  --registry-dir /tmp/msft-registry-work/registries/openfigi-cusip-2026.06.09 \
+  --overlay /path/to/p008-overlay.json \
+  --out /tmp/p008-openfigi-snapshot.json
+```
+
+The optional overlay records filing-specific fields such as `security_title`, `normalized_title`, `canonical_signature`, and `exchange` when the filing does not expose a strong identifier for each registered instrument.
+
+### Run The Identity-Fragility Proof
+
+The MSFT proof command packages the cached S3, Arelle, `pack`, `verify-pack`, and focused P008 assertion steps. Use `--dry-run` first to inspect the exact local-file workflow:
+
+```bash
+cmdrvl-xew p008 prove-identity-fragility \
+  --work-dir /tmp/xew-msft-proof \
+  --aws-profile salt_profile \
+  --taxonomy-home ~/.cmdrvl-xew/arelle \
+  --dry-run
+```
+
+Run it after the taxonomy cache is installed:
+
+```bash
+cmdrvl-xew p008 prove-identity-fragility \
+  --work-dir /tmp/xew-msft-proof \
+  --aws-profile salt_profile \
+  --taxonomy-home ~/.cmdrvl-xew/arelle \
+  --p008-registry-snapshot /tmp/p008-openfigi-snapshot.json
+```
+
+The command never calls SEC or OpenFIGI. It reads cached S3 filing bytes, consumes local taxonomy packages, and optionally consumes a local P008 registry snapshot.
+
+### Build A Deterministic Candidate Shortlist
+
+Use the orchestrator only to create a local filing manifest. After the manifest exists, scanning and pack generation consume local files/cached S3 only.
+
+```bash
+cmdrvl-xew p008 manifest-from-orchestrator \
+  --tenant salt \
+  --query "recent Microsoft 10-Q filings with registered debt securities" \
+  --out /tmp/p008-corpus.jsonl
+```
+
+Then rank candidates from existing packs:
+
+```bash
+cmdrvl-xew p008 scan-corpus \
+  --manifest /tmp/p008-corpus.jsonl \
+  --out-dir /tmp/p008-scan
+```
+
+Or explicitly allow the scanner to run cached S3 plus offline Arelle packs for each row:
+
+```bash
+cmdrvl-xew p008 scan-corpus \
+  --manifest /tmp/p008-corpus.jsonl \
+  --out-dir /tmp/p008-scan \
+  --run-packs \
+  --aws-profile salt_profile \
+  --taxonomy-home ~/.cmdrvl-xew/arelle \
+  --continue-on-error
+```
+
+The scanner emits stable JSONL and CSV summaries ranked by resolved or ambiguous P008 member count, max collapse group size, distinct instrument-kind count, newest filed date, and accession.
 
 ### Install taxonomy packages for offline production runs
 
@@ -305,12 +429,15 @@ Hosted systems (outside this repo) can provide:
 Current status:
 - Evidence Pack writer and verifier are implemented.
 - v1 detectors (P001/P002/P004/P005/P008) are implemented; `pack` loads a real Arelle model by default (install `arelle-release`). Use `--no-arelle` to force the mock model, or `--require-arelle` to fail fast if Arelle cannot be used.
+- Arelle is pinned through the `arelle`/`prod` extras for deterministic production installs.
+- Cached S3 artifact ingress supports both `extracted/YYYYMMDD/ACCESSION/` and complete-submission `xbrl/YYYYMMDD/ACCESSION.nc` layouts.
+- P008 can materialize corpus-scoped seed files for canon/OpenFIGI and adapt local canon registry output into a P008 snapshot.
 
 Next steps (v1):
-- Harden Arelle loading and detector inputs for broader filing coverage.
+- Harden real-S3 Arelle regression coverage for broader filing sets.
 - Freeze issue-code enums and pin rule basis per shipped issue code.
 - Add deterministic truncation/capping rules for large instance lists.
-- Build the external canon/OpenFIGI provider that produces P008 registry snapshots once twinning supports the OpenFIGI OpenAPI cleanly.
+- Package the operator-facing identity-fragility runbook around the S3, Arelle, canon snapshot, pack, and verify steps.
 
 ## License
 

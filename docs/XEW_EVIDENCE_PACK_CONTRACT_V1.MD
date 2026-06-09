@@ -97,6 +97,7 @@ P008 consumes these row fields when present:
 - `canonical_signature`
 - `cusip`
 - `isin`
+- `sedol`
 - `composite_figi`
 - `share_class_figi`
 - `market_sector`

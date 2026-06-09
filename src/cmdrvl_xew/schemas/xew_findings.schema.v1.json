@@ -664,6 +664,7 @@
         "canonical_signature": { "type": "string" },
         "cusip": { "type": "string" },
         "isin": { "type": "string" },
+        "sedol": { "type": "string" },
         "composite_figi": { "type": "string" },
         "share_class_figi": { "type": "string" },
         "market_sector": { "type": "string" },

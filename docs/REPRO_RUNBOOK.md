@@ -88,6 +88,34 @@ cmdrvl-xew pack \
 
 The Microsoft-style deterministic fixture used by the test suite expects one collapse group for `MSFT`/`Nasdaq` with common stock, `3.125% Notes due 2028`, and `2.625% Notes due 2033`; the registry snapshot fixture resolves them to `BBG000BPH459`, `BBG005NPW5Z2`, and `BBG004HDR2M6`.
 
+To prepare a local snapshot from canon registry output, keep the provider call outside `pack`:
+
+```bash
+cmdrvl-xew p008 materialize-registry \
+  --corpus-id msft-proof \
+  --filing-manifest /path/to/corpus.jsonl \
+  --out-dir /tmp/msft-registry-work \
+  --version 2026.06.09 \
+  --provider-config base_url=http://127.0.0.1:9000/v3/mapping
+
+cmdrvl-xew p008 snapshot-from-canon \
+  --registry-dir /tmp/msft-registry-work/registries/openfigi-cusip-2026.06.09 \
+  --overlay /path/to/p008-overlay.json \
+  --out /tmp/p008-openfigi-snapshot.json
+```
+
+For cached S3 filings, use `fetch-s3` before `pack`:
+
+```bash
+cmdrvl-xew fetch-s3 \
+  --bucket edgar-data-full \
+  --date-partition 20260429 \
+  --accession 0001193125-26-191507 \
+  --source-layout extracted \
+  --aws-profile salt_profile \
+  --out /tmp/msft-flat
+```
+
 ## 5) Verify the pack
 
 ```bash

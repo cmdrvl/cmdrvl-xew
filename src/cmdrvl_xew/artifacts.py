@@ -49,6 +49,7 @@ def collect_artifacts(primary_path: Path, *, root_dir: Path | None = None) -> li
 
     artifacts: dict[str, tuple[Path, str]] = {}
     _add_artifact(artifacts, root_dir, primary_path, role="primary_ixbrl")
+    _add_optional_sidecars(artifacts, root_dir)
 
     errors: list[str] = []
     schema_paths: list[Path] = []
@@ -115,6 +116,13 @@ def _add_artifact(artifacts: dict[str, tuple[Path, str]], root_dir: Path, path: 
         if existing_role == "primary_ixbrl" or role != "primary_ixbrl":
             return
     artifacts[rel] = (path, role)
+
+
+def _add_optional_sidecars(artifacts: dict[str, tuple[Path, str]], root_dir: Path) -> None:
+    for name in ("_xew_s3_provenance.json", "_xew_sgml_extraction.json"):
+        path = root_dir / name
+        if path.is_file():
+            _add_artifact(artifacts, root_dir, path, role="other")
 
 
 def _relpath(root_dir: Path, path: Path) -> str:

@@ -14,7 +14,9 @@ authors = [{name = "cmdrvl"}]
 dependencies = []
 
 [project.optional-dependencies]
+arelle = ["arelle-release==2.41.4"]
 jsonschema = ["jsonschema>=4"]
+prod = ["arelle-release==2.41.4", "jsonschema>=4"]
 
 [project.scripts]
 cmdrvl-xew = "cmdrvl_xew.cli:main"

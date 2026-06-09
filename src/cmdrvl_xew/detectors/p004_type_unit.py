@@ -5,8 +5,7 @@ Detects objective violations in datatype, unit, or numeric attributes.
 Focuses on clear rule-based correctness issues with pinned rule basis.
 """
 
-from typing import Dict, List, Any, Set, Tuple, Optional
-from decimal import Decimal, InvalidOperation
+from typing import Dict, List, Any, Optional
 import logging
 import re
 
@@ -17,7 +16,6 @@ from ..util import (
     normalize_numeric_value,
     get_unit_measures_clark,
     generate_finding_id,
-    generate_instance_id,
     create_finding_summary,
     qname_to_clark,
     qname_object,
@@ -99,14 +97,17 @@ class TypeUnitNumericDetector(BaseDetector):
 
         try:
             for fact in getattr(xbrl_model, 'facts', []):
+                concept = getattr(fact, 'concept', None)
+                context = getattr(fact, 'context', None)
+                unit = getattr(fact, 'unit', None)
                 fact_data = {
                     'fact': fact,
                     'qname': fact.qname,
                     'clark_notation': qname_to_clark(fact.qname),
                     'value': fact.value,
-                    'concept': fact.concept,
-                    'context': fact.context,
-                    'unit': getattr(fact, 'unit', None),
+                    'concept': concept,
+                    'context': context,
+                    'unit': unit,
                     'is_numeric': getattr(fact, 'isNumeric', False),
 
                     # Numeric attributes
@@ -114,12 +115,12 @@ class TypeUnitNumericDetector(BaseDetector):
                     'precision': getattr(fact, 'precision', None),
 
                     # Type information
-                    'type_qname': getattr(fact.concept, 'type', None) if fact.concept else None,
-                    'period_type': getattr(fact.concept, 'periodType', None) if fact.concept else None,
+                    'type_qname': getattr(concept, 'type', None) if concept is not None else None,
+                    'period_type': getattr(concept, 'periodType', None) if concept is not None else None,
 
                     # Context and unit references
-                    'context_ref': getattr(fact.context, 'id', None) if fact.context else None,
-                    'unit_ref': getattr(fact.unit, 'id', None) if fact.unit else None,
+                    'context_ref': getattr(context, 'id', None) if context is not None else None,
+                    'unit_ref': getattr(unit, 'id', None) if unit is not None else None,
                 }
                 facts.append(fact_data)
 
@@ -132,19 +133,19 @@ class TypeUnitNumericDetector(BaseDetector):
         """Analyze a single fact for type/unit/numeric violations."""
         violations = []
 
-        qname = fact_data['qname']
         clark_notation = fact_data['clark_notation']
         is_numeric = fact_data['is_numeric']
         decimals = fact_data['decimals']
         precision = fact_data['precision']
         unit = fact_data['unit']
         concept = fact_data['concept']
+        clark_notation = fact_data['clark_notation']
         value = fact_data['value']
 
         # Check numeric attribute violations
         if is_numeric:
             # Check for missing unit on numeric fact
-            if not unit:
+            if unit is None:
                 violations.append({
                     'fact_data': fact_data,
                     'issue_code': 'missing_unit_numeric',
@@ -191,13 +192,13 @@ class TypeUnitNumericDetector(BaseDetector):
                 })
 
             # Check unit type compatibility
-            if unit and concept:
+            if unit is not None and concept is not None:
                 unit_violations = self._check_unit_type_compatibility(fact_data)
                 violations.extend(unit_violations)
 
         else:
             # Non-numeric fact with unit attribute (discouraged)
-            if unit:
+            if unit is not None:
                 violations.append({
                     'fact_data': fact_data,
                     'issue_code': 'unit_on_non_numeric',
@@ -205,7 +206,7 @@ class TypeUnitNumericDetector(BaseDetector):
                 })
 
         # Check data type constraint violations
-        if concept and value is not None:
+        if concept is not None and value is not None:
             type_violations = self._check_type_constraints(fact_data)
             violations.extend(type_violations)
 
@@ -240,14 +241,13 @@ class TypeUnitNumericDetector(BaseDetector):
         unit = fact_data['unit']
         concept = fact_data['concept']
         clark_notation = fact_data['clark_notation']
-
         try:
             # Extract unit measures
             unit_measures = get_unit_measures_clark(unit)
 
             # Get concept type information
             concept_type = getattr(concept, 'type', None)
-            type_name = str(concept_type) if concept_type else ''
+            type_name = str(concept_type) if concept_type is not None else ''
 
             # Basic unit type compatibility checks
             # (This would be expanded with more sophisticated type analysis)
@@ -285,11 +285,10 @@ class TypeUnitNumericDetector(BaseDetector):
 
         concept = fact_data['concept']
         value = fact_data['value']
-        clark_notation = fact_data['clark_notation']
 
         try:
             concept_type = getattr(concept, 'type', None)
-            if not concept_type:
+            if concept_type is None:
                 return violations
 
             type_name = str(concept_type).lower()
@@ -390,8 +389,6 @@ class TypeUnitNumericDetector(BaseDetector):
         try:
             fact_data = violation['fact_data']
             issue_code = violation['issue_code']
-            description = violation['description']
-
             # Extract key identifiers
             clark_notation = fact_data['clark_notation']
             context_ref = fact_data['context_ref'] or ''
@@ -399,7 +396,7 @@ class TypeUnitNumericDetector(BaseDetector):
 
             # Normalize unit for signature
             unit = None
-            if fact_data['unit']:
+            if fact_data['unit'] is not None:
                 try:
                     unit_measures = get_unit_measures_clark(fact_data['unit'])
                     unit = normalize_unit(measures=unit_measures)
@@ -449,7 +446,7 @@ class TypeUnitNumericDetector(BaseDetector):
                     unit_measures = get_unit_measures_clark(fact_data['unit'])
                     instance_data['unit_measures'] = [qname_object(m) for m in unit_measures]
                 except Exception:
-                    pass
+                    self.logger.debug("Failed to build unit measure evidence", exc_info=True)
 
             return DetectorInstance(
                 instance_id=instance_id,

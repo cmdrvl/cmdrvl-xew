@@ -20,10 +20,11 @@ class _QName:
         self.prefix = "dei"
 
 
-def _fact(local_name: str, value: str, context_id: str):
+def _fact(local_name: str, value: str, context_id: str, *, raw_value: str | None = None):
     return SimpleNamespace(
         qname=_QName(local_name),
         value=value,
+        rawValue=raw_value if raw_value is not None else value,
         context=SimpleNamespace(id=context_id),
     )
 
@@ -126,6 +127,31 @@ class TestP008Detector(unittest.TestCase):
         self.assertEqual(data["collapsed_key"]["ticker"], "MSFT")
         self.assertEqual(data["collapsed_key"]["exchange"], "NASDAQ")
         self.assertEqual({member["registry"]["status"] for member in data["members"]}, {"snapshot_absent"})
+
+    def test_arelle_ix_transform_error_uses_raw_value_for_exchange(self):
+        facts = []
+        for context, title in (
+            ("stock", "Common stock, $0.00000625 par value per share"),
+            ("note-2028", "3.125% Notes due 2028"),
+        ):
+            facts.extend(
+                [
+                    _fact("Security12bTitle", title, context),
+                    _fact("TradingSymbol", "MSFT", context),
+                    _fact("SecurityExchangeName", "(ixTransformValueError)", context, raw_value="Nasdaq"),
+                ]
+            )
+        with tempfile.TemporaryDirectory() as tmp:
+            primary = Path(tmp) / "primary.htm"
+            primary.write_text("<html></html>", encoding="utf-8")
+            context = _context(primary, facts)
+
+            finding = self.detector.detect(context)[0]
+
+        data = finding.instances[0].data
+        self.assertEqual(data["collapsed_key"]["exchange"], "NASDAQ")
+        self.assertEqual(data["members"][0]["facts"][0]["source"]["extraction"], "arelle")
+        self.assertNotIn("IXTRANSFORMVALUEERROR", json.dumps(data))
 
     def test_registry_snapshot_resolves_all_three_members(self):
         with tempfile.TemporaryDirectory() as tmp:

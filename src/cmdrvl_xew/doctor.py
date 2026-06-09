@@ -3,10 +3,12 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
 from .exit_codes import ExitCode
+from .toolchain import detect_arelle_version
 
 
 @dataclass(frozen=True)
@@ -42,22 +44,23 @@ def _resolve_arelle_xdg_config_home(cli_value: str | None) -> Path:
     configured = (cli_value or os.environ.get("XEW_ARELLE_XDG_CONFIG_HOME") or "").strip()
     if configured:
         return Path(configured).expanduser().resolve()
-    return Path("/tmp") / "cmdrvl-xew-arelle"
+    return Path(tempfile.gettempdir()) / "cmdrvl-xew-arelle"
 
 
 def _check_arelle_importable() -> list[DoctorCheck]:
-    try:
-        from arelle import Version  # type: ignore
-
-        version = getattr(Version, "version", None) or getattr(Version, "__version__", None) or "unknown"
+    version = detect_arelle_version()
+    if version != "not_installed":
         return [DoctorCheck("arelle", "OK", f"import ok (version={version})")]
+
+    try:
+        import arelle  # noqa: F401  # type: ignore
     except Exception as e:
         return [
             DoctorCheck(
                 "arelle",
                 "FAIL",
                 f"cannot import ({e})",
-                fix="Install Arelle (pip install arelle-release).",
+                fix="Install the production extra: pip install 'cmdrvl-xew[arelle]' or uv sync --extra arelle.",
             )
         ]
 

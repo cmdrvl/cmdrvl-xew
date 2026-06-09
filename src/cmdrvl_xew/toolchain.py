@@ -8,14 +8,30 @@ import json
 import logging
 import platform
 import subprocess
-import sys
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, Any, Optional
 
 from .util import utc_now_iso
 
 logger = logging.getLogger(__name__)
+
+
+def detect_arelle_version() -> str:
+    """Return the importable Arelle version or a deterministic sentinel."""
+    try:
+        import arelle  # type: ignore
+
+        version = getattr(arelle, "__version__", None)
+        if not version:
+            try:
+                from arelle import Version as arelle_version  # type: ignore
+
+                version = getattr(arelle_version, "version", None) or getattr(arelle_version, "__version__", None)
+            except Exception:
+                version = None
+        return str(version or "unknown")
+    except Exception:
+        return "not_installed"
 
 
 class ToolchainRecorder:
@@ -98,29 +114,9 @@ class ToolchainRecorder:
         if "arelle_version" in self._cached_versions:
             return self._cached_versions["arelle_version"]
 
-        try:
-            # Try to import arelle and get version (arelle-release exposes version via arelle.Version.version)
-            import arelle  # type: ignore
-
-            version = getattr(arelle, "__version__", None)
-            if not version:
-                try:
-                    from arelle import Version as arelle_version  # type: ignore
-                    version = getattr(arelle_version, "version", None) or getattr(arelle_version, "__version__", None)
-                except Exception:
-                    version = None
-
-            if not version:
-                version = "unknown"
-
-            self._cached_versions["arelle_version"] = version
-            return version
-
-        except ImportError:
-            # Arelle not available
-            version = "not_installed"
-            self._cached_versions["arelle_version"] = version
-            return version
+        version = detect_arelle_version()
+        self._cached_versions["arelle_version"] = version
+        return version
 
     def _get_arelle_sec_plugin_version(self) -> Optional[str]:
         """Get Arelle SEC plugin version if available."""

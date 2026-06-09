@@ -215,7 +215,7 @@ class InstrumentIdentityCollapseDetector(BaseDetector):
         context_ref = normalize_text(getattr(context_obj, "id", "") or getattr(fact, "contextID", ""))
         if not context_ref:
             return None
-        value = normalize_text(getattr(fact, "value", ""))
+        value = self._arelle_fact_value(fact)
         evidence = {
             "concept": self._concept_obj(qname, local_name, prefixed),
             "context_ref": context_ref,
@@ -223,6 +223,14 @@ class InstrumentIdentityCollapseDetector(BaseDetector):
             "source": {"extraction": "arelle"},
         }
         return context_ref, field, evidence
+
+    def _arelle_fact_value(self, fact: Any) -> str:
+        value = normalize_text(getattr(fact, "value", ""))
+        if value.upper() == "(IXTRANSFORMVALUEERROR)":
+            raw = normalize_text(getattr(fact, "rawValue", ""))
+            if raw:
+                return raw
+        return value
 
     def _extract_html_facts(self, primary_path: Path) -> dict[str, dict[str, list[dict[str, object]]]]:
         groups: dict[str, dict[str, list[dict[str, object]]]] = defaultdict(lambda: defaultdict(list))

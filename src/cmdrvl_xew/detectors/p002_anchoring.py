@@ -5,15 +5,13 @@ Detects objective anchoring defects in extension concepts without making semanti
 Focuses on structural issues like abstract targets and type/period mismatches.
 """
 
-from typing import Dict, List, Any, Set, Tuple, Optional
-from collections import defaultdict
+from typing import Dict, List, Any, Optional
 import logging
 
 from ._base import BaseDetector, DetectorContext, DetectorFinding, DetectorInstance
 from ..util import (
     canonical_signature_p002,
     generate_finding_id,
-    generate_instance_id,
     create_finding_summary,
     qname_to_clark,
     qname_object,
@@ -121,7 +119,7 @@ class AnchoringDefectsDetector(BaseDetector):
 
     def _is_extension_concept(self, concept) -> bool:
         """Determine if a concept is an extension concept (not from standard taxonomies)."""
-        if not concept or not hasattr(concept, 'qname'):
+        if concept is None or not hasattr(concept, 'qname'):
             return False
 
         # Common standard taxonomy namespaces (these are NOT extension concepts)
@@ -215,7 +213,7 @@ class AnchoringDefectsDetector(BaseDetector):
             if qname in anchoring_map:
                 for rel in anchoring_map[qname]:
                     anchor_concept = rel.get('to_concept')
-                    if anchor_concept:
+                    if anchor_concept is not None:
                         # Check if anchored to abstract concept
                         if getattr(anchor_concept, 'abstract', False):
                             concept_defects.append('anchor_target_abstract')
@@ -230,7 +228,7 @@ class AnchoringDefectsDetector(BaseDetector):
                         # Check data type mismatch (basic check)
                         ext_type = ext_concept_data.get('type')
                         anchor_type = getattr(anchor_concept, 'type', None)
-                        if (ext_type and anchor_type and
+                        if (ext_type is not None and anchor_type is not None and
                             str(ext_type) != str(anchor_type)):
                             concept_defects.append('type_mismatch')
 
@@ -324,7 +322,7 @@ class AnchoringDefectsDetector(BaseDetector):
             anchors = []
             for rel in defect_data.get('anchoring_relationships', []):
                 anchor_concept = rel.get('to_concept')
-                if anchor_concept and getattr(anchor_concept, 'qname', None):
+                if anchor_concept is not None and getattr(anchor_concept, 'qname', None):
                     anchors.append({
                         'arcrole': rel.get('arcrole', ''),
                         'target_concept': qname_object(anchor_concept.qname),
@@ -426,7 +424,7 @@ class AnchoringDefectsDetector(BaseDetector):
     def _fact_ref_from_fact(self, fact: Any) -> Optional[Dict[str, Any]]:
         """Build a schema-compatible fact_ref from an Arelle fact."""
         context = getattr(fact, 'context', None)
-        if not context:
+        if context is None:
             return None
         context_ref = getattr(context, 'id', None) or getattr(context, 'contextID', None)
         if not context_ref:

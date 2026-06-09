@@ -44,6 +44,7 @@ class RegistryRow:
     canonical_signature: str = ""
     cusip: str = ""
     isin: str = ""
+    sedol: str = ""
     composite_figi: str = ""
     share_class_figi: str = ""
     market_sector: str = ""
@@ -68,6 +69,7 @@ class RegistryRow:
             canonical_signature=normalize_text(raw.get("canonical_signature", "")),
             cusip=normalize_identifier(raw.get("cusip", "")),
             isin=normalize_identifier(raw.get("isin", "")),
+            sedol=normalize_identifier(raw.get("sedol", "")),
             composite_figi=normalize_identifier(raw.get("composite_figi", "")),
             share_class_figi=normalize_identifier(raw.get("share_class_figi", "")),
             market_sector=normalize_text(raw.get("market_sector", "")),
@@ -86,6 +88,7 @@ class RegistryRow:
             self.canonical_signature,
             self.cusip,
             self.isin,
+            self.sedol,
             self.composite_figi,
             self.share_class_figi,
             self.market_sector,
@@ -105,6 +108,7 @@ class RegistryRow:
             "canonical_signature": self.canonical_signature,
             "cusip": self.cusip,
             "isin": self.isin,
+            "sedol": self.sedol,
             "composite_figi": self.composite_figi,
             "share_class_figi": self.share_class_figi,
             "market_sector": self.market_sector,
@@ -154,7 +158,7 @@ class InstrumentRegistrySnapshot:
     ) -> None:
         self.snapshot_id = normalize_text(snapshot_id)
         self.generated_at = normalize_text(generated_at)
-        self.source = {str(k): normalize_text(v) for k, v in sorted(source.items())}
+        self.source = {str(k): _normalize_json_value(v) for k, v in sorted(source.items())}
         self.rows = tuple(sorted(rows, key=lambda row: row.dedupe_key))
         self.path = path
         self.sha256 = sha256
@@ -175,6 +179,12 @@ class InstrumentRegistrySnapshot:
             raise RegistrySnapshotError(f"registry snapshot is not valid JSON: {exc}") from exc
         if not isinstance(raw, dict):
             raise RegistrySnapshotError("registry snapshot root must be an object")
+        schema_id = normalize_text(raw.get("schema_id", ""))
+        if schema_id and schema_id != "cmdrvl.canon.openfigi_registry_snapshot":
+            raise RegistrySnapshotError(f"unsupported registry snapshot schema_id: {schema_id}")
+        schema_version = normalize_text(raw.get("schema_version", ""))
+        if schema_version and schema_version != "1.0":
+            raise RegistrySnapshotError(f"unsupported registry snapshot schema_version: {schema_version}")
         rows_raw = raw.get("rows")
         if not isinstance(rows_raw, list):
             raise RegistrySnapshotError("registry snapshot rows must be an array")
@@ -289,3 +299,15 @@ def invalid_registry_lookup(error: Exception) -> RegistryLookup:
         status="snapshot_invalid",
         diagnostic=str(error),
     )
+
+
+def _normalize_json_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(k): _normalize_json_value(v) for k, v in sorted(value.items())}
+    if isinstance(value, list):
+        return [_normalize_json_value(v) for v in value]
+    if isinstance(value, bool) or value is None:
+        return value
+    if isinstance(value, (int, float)):
+        return value
+    return normalize_text(value)
