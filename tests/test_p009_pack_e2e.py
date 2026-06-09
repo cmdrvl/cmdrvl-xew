@@ -108,7 +108,7 @@ class TestP009PackE2E(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.temp_dir)
 
-    def _pack_args(self, out: Path, *, pack_id: str = "p009-pack"):
+    def _pack_args(self, out: Path, *, pack_id: str = "p009-pack", registry: bool = True):
         return argparse.Namespace(
             pack_id=pack_id,
             out=str(out),
@@ -134,7 +134,7 @@ class TestP009PackE2E(unittest.TestCase):
             arelle_xdg_config_home=None,
             derive_artifact_urls=False,
             p001_conflict_mode="rounded",
-            p008_registry_snapshot=str(self.registry),
+            p008_registry_snapshot=str(self.registry) if registry else None,
             p008_require_registry=False,
             p009_observations=[str(self.observations)],
         )
@@ -172,6 +172,41 @@ class TestP009PackE2E(unittest.TestCase):
 
         artifact_paths = {entry["path"] for entry in findings["artifacts"]}
         self.assertIn("generated/instrument_identity_drift.v1.json", artifact_paths)
+
+        verify_args = argparse.Namespace(
+            pack=str(pack_dir),
+            validate_schema=True,
+            quiet=True,
+            verbose=False,
+            check_only=False,
+            fail_fast=False,
+        )
+        self.assertEqual(run_verify_pack(verify_args), 0)
+
+    def test_pack_without_registry_snapshot_succeeds_with_snapshot_absent_evidence(self):
+        pack_dir = self.root / "pack-no-registry"
+
+        self.assertEqual(run_pack(self._pack_args(pack_dir, registry=False)), 0)
+
+        findings = _load_json(pack_dir / "xew_findings.json")
+        p009_findings = [item for item in findings["findings"] if item["pattern_id"] == "XEW-P009"]
+        self.assertEqual(len(p009_findings), 1)
+        instance = p009_findings[0]["observed"]["instances"][0]
+        self.assertEqual(instance["data"]["continuity_class"], "weak_collision")
+        self.assertEqual(instance["data"]["issue_codes"], ["weak_key_temporal_collision"])
+        self.assertEqual(instance["data"]["registry_snapshot"]["status"], "absent")
+
+        generated_path = pack_dir / "generated" / "instrument_identity_drift.v1.json"
+        self.assertTrue(generated_path.is_file())
+        generated = _load_json(generated_path)
+        self.assertEqual(generated["registry_snapshot"]["status"], "absent")
+        self.assertEqual(generated["unresolved_candidates"][0]["continuity_class"], "weak_collision")
+
+        manifest = _load_json(pack_dir / "pack_manifest.json")
+        manifest_paths = {entry["path"] for entry in manifest["files"]}
+        self.assertIn("generated/instrument_identity_drift.v1.json", manifest_paths)
+        self.assertIn("artifacts/p009_observations/001_p009-observations.jsonl", manifest_paths)
+        self.assertNotIn("artifacts/p008_registry_snapshot.json", manifest_paths)
 
         verify_args = argparse.Namespace(
             pack=str(pack_dir),

@@ -191,6 +191,113 @@ def _write_scan_fixture(root: Path) -> tuple[Path, Path, Path]:
     return manifest, observations, registry
 
 
+def _write_single_fragile_scan_fixture(root: Path) -> tuple[Path, Path, Path]:
+    manifest = root / "p009_single_fragile_manifest.v1.jsonl"
+    observations = root / "p009_single_fragile_observations.v1.jsonl"
+    registry = root / "single-fragile-registry.json"
+    rows = [
+        _manifest_row("fragile-jan", scope_key="fund:fragile", report_period="2026-01-31", filed_date="2026-02-02"),
+        _manifest_row("fragile-feb", scope_key="fund:fragile", report_period="2026-02-28", filed_date="2026-03-02"),
+        _manifest_row("clean-a-jan", scope_key="fund:clean-a", report_period="2026-01-31", filed_date="2026-02-03"),
+        _manifest_row("clean-a-feb", scope_key="fund:clean-a", report_period="2026-02-28", filed_date="2026-03-03"),
+        _manifest_row("clean-b-jan", scope_key="fund:clean-b", report_period="2026-01-31", filed_date="2026-02-04"),
+        _manifest_row("clean-b-feb", scope_key="fund:clean-b", report_period="2026-02-28", filed_date="2026-03-04"),
+    ]
+    manifest.write_text(_jsonl(rows), encoding="utf-8")
+    for row in rows:
+        (root / str(row["local_path"])).write_text("{}\n", encoding="utf-8")
+    observations.write_text(
+        _jsonl(
+            [
+                _observation_row(
+                    "fragile-jan",
+                    scope_key="fund:fragile",
+                    report_period="2026-01-31",
+                    filed_date="2026-02-02",
+                    observation_ordinal=0,
+                    cusip="123456AB7",
+                    issuer_name="Fragile Issuer",
+                    title_or_description="Fragile Security",
+                    value="100000000",
+                ),
+                _observation_row(
+                    "fragile-feb",
+                    scope_key="fund:fragile",
+                    report_period="2026-02-28",
+                    filed_date="2026-03-02",
+                    observation_ordinal=0,
+                    figi="BBG000000001",
+                    issuer_name="Fragile Issuer",
+                    title_or_description="Fragile Security",
+                    value="100000000",
+                ),
+                _observation_row(
+                    "clean-a-jan",
+                    scope_key="fund:clean-a",
+                    report_period="2026-01-31",
+                    filed_date="2026-02-03",
+                    observation_ordinal=0,
+                    cusip="999999AB9",
+                    issuer_name="Clean A Issuer",
+                    title_or_description="Clean A Security",
+                    value="75000000",
+                ),
+                _observation_row(
+                    "clean-a-feb",
+                    scope_key="fund:clean-a",
+                    report_period="2026-02-28",
+                    filed_date="2026-03-03",
+                    observation_ordinal=0,
+                    cusip="999999AB9",
+                    issuer_name="Clean A Issuer",
+                    title_or_description="Clean A Security",
+                    value="75000000",
+                ),
+                _observation_row(
+                    "clean-b-jan",
+                    scope_key="fund:clean-b",
+                    report_period="2026-01-31",
+                    filed_date="2026-02-04",
+                    observation_ordinal=0,
+                    isin="US111111AB18",
+                    issuer_name="Clean B Issuer",
+                    title_or_description="Clean B Security",
+                    value="50000000",
+                ),
+                _observation_row(
+                    "clean-b-feb",
+                    scope_key="fund:clean-b",
+                    report_period="2026-02-28",
+                    filed_date="2026-03-04",
+                    observation_ordinal=0,
+                    isin="US111111AB18",
+                    issuer_name="Clean B Issuer",
+                    title_or_description="Clean B Security",
+                    value="50000000",
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+    registry.write_text(
+        json.dumps(
+            {
+                "schema_id": "cmdrvl.canon.openfigi_registry_snapshot",
+                "schema_version": "1.0",
+                "snapshot_id": "p009-single-fragile-scan-test",
+                "generated_at": "2026-06-09T00:00:00Z",
+                "source": {"producer": "canon", "dataset": "openfigi"},
+                "rows": [{"figi": "BBG000000001", "cusip": "123456AB7", "name": "Fragile Security"}],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return manifest, observations, registry
+
+
 class TestP009Scan(unittest.TestCase):
     def test_scan_discovers_and_ranks_fragile_scopes_from_broad_corpus(self):
         with tempfile.TemporaryDirectory() as td:
@@ -217,6 +324,28 @@ class TestP009Scan(unittest.TestCase):
         )
         self.assertEqual(len(top.pack_input_plan["manifest_sources"]), 2)
         self.assertNotIn("fund:clean", {candidate.source_scope_key for candidate in result.candidates})
+
+    def test_scan_discovers_one_fragile_scope_among_clean_histories(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            manifest, observations, registry = _write_single_fragile_scan_fixture(root)
+            corpus = load_p009_corpus(manifest, observations_path=observations)
+            provider = InstrumentRegistryP009Lookup(InstrumentRegistrySnapshot.load(registry))
+            result = scan_p009_corpus(corpus, registry_snapshot=provider)
+
+        self.assertEqual(result.diagnostics, ())
+        self.assertEqual([candidate.source_scope_key for candidate in result.candidates], ["fund:fragile"])
+        candidate = result.candidates[0]
+        self.assertEqual(candidate.rank, 1)
+        self.assertEqual(candidate.continuity_class, "registry_bridged")
+        self.assertEqual(candidate.registry_status, "resolved")
+        self.assertEqual(set(candidate.issue_codes), {"identifier_basis_transition", "registry_bridge_available"})
+        self.assertEqual(candidate.source_ids, ("fragile-feb", "fragile-jan"))
+        self.assertEqual({item["scope_key"] for item in candidate.pack_input_plan["manifest_sources"]}, {"fund:fragile"})
+        self.assertEqual(
+            {(seed["id_type"], seed["value"]) for seed in candidate.seed_identifiers},
+            {("cusip", "123456AB7"), ("figi", "BBG000000001")},
+        )
 
     def test_scan_without_registry_reports_unresolved_collision_not_live_lookup(self):
         with tempfile.TemporaryDirectory() as td:
