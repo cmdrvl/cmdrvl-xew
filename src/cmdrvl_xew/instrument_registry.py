@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
@@ -17,6 +18,7 @@ from .instrument_identity import (
     InstrumentIdentity,
     normalize_exchange_key,
     normalize_identifier,
+    normalize_key_token,
     normalize_text,
     normalize_ticker,
 )
@@ -50,6 +52,7 @@ class RegistryRow:
     market_sector: str = ""
     security_type: str = ""
     name: str = ""
+    other_identifiers: tuple[tuple[str, str], ...] = ()
 
     @classmethod
     def from_json(cls, raw: dict[str, Any], index: int) -> "RegistryRow":
@@ -75,6 +78,7 @@ class RegistryRow:
             market_sector=normalize_text(raw.get("market_sector", "")),
             security_type=normalize_text(raw.get("security_type", "")),
             name=normalize_text(raw.get("name", "")),
+            other_identifiers=_other_identifiers(raw),
         )
 
     @property
@@ -94,7 +98,13 @@ class RegistryRow:
             self.market_sector,
             self.security_type,
             self.name,
+            ";".join(f"{id_type}:{value}" for id_type, value in self.other_identifiers),
         )
+
+    @property
+    def stable_id(self) -> str:
+        payload = json.dumps(self.to_json(), sort_keys=True, ensure_ascii=True)
+        return hashlib.sha256(payload.encode("ascii")).hexdigest()
 
     def to_json(self) -> dict[str, str]:
         data = {
@@ -118,6 +128,10 @@ class RegistryRow:
         for key in sorted(optional):
             if optional[key]:
                 data[key] = optional[key]
+        if self.other_identifiers:
+            data["other_identifiers"] = [
+                {"id_type": id_type, "value": value} for id_type, value in self.other_identifiers
+            ]
         return data
 
 
@@ -216,11 +230,69 @@ class InstrumentRegistrySnapshot:
         return data
 
     def lookup(self, instrument: InstrumentIdentity) -> RegistryLookup:
-        matches = self._candidate_rows(instrument)
+        return self._lookup_from_matches(
+            self._candidate_rows(instrument),
+            missing_diagnostic="No row in the local registry snapshot matched this instrument identity.",
+            ambiguous_diagnostic="Multiple distinct FIGI rows matched the same filing identity.",
+        )
+
+    def lookup_identifier(self, id_type: str, value: object) -> RegistryLookup:
+        """Look up rows by an exact identifier only.
+
+        This is the P009-safe path: no ticker, title, name, or weak descriptive
+        fields are used as bridge authority.
+        """
+
+        key_type = _canonical_lookup_id_type(id_type)
+        key_value = _normalize_lookup_value(key_type, value)
+        if not key_type:
+            return RegistryLookup(
+                status="unsupported_id_type",
+                diagnostic=f"Unsupported local registry identifier type: {normalize_text(id_type)}",
+            )
+        if not key_value:
+            return RegistryLookup(
+                status="missing",
+                diagnostic="No identifier value was supplied for local registry lookup.",
+            )
+        return self._lookup_from_matches(
+            [row for row in self.rows if _row_matches_identifier(row, key_type, key_value)],
+            missing_diagnostic=f"No row in the local registry snapshot matched {key_type}.",
+            ambiguous_diagnostic=f"Multiple distinct FIGI rows matched {key_type}.",
+        )
+
+    def lookup_identifiers(self, identifiers: Iterable[tuple[str, object]]) -> RegistryLookup:
+        """Return the first non-missing exact-identifier lookup in input order."""
+
+        saw_unsupported = False
+        for id_type, value in identifiers:
+            lookup = self.lookup_identifier(id_type, value)
+            if lookup.status == "unsupported_id_type":
+                saw_unsupported = True
+                continue
+            if lookup.status != "missing":
+                return lookup
+        if saw_unsupported:
+            return RegistryLookup(
+                status="unsupported_id_type",
+                diagnostic="Only unsupported identifier types were available for local registry lookup.",
+            )
+        return RegistryLookup(
+            status="missing",
+            diagnostic="No row in the local registry snapshot matched any exact identifier.",
+        )
+
+    def _lookup_from_matches(
+        self,
+        matches: list[RegistryRow],
+        *,
+        missing_diagnostic: str,
+        ambiguous_diagnostic: str,
+    ) -> RegistryLookup:
         if not matches:
             return RegistryLookup(
                 status="missing",
-                diagnostic="No row in the local registry snapshot matched this instrument identity.",
+                diagnostic=missing_diagnostic,
             )
 
         deduped: dict[tuple[str, ...], RegistryRow] = {}
@@ -233,7 +305,7 @@ class InstrumentRegistrySnapshot:
             return RegistryLookup(
                 status="ambiguous",
                 candidates=unique_rows,
-                diagnostic="Multiple distinct FIGI rows matched the same filing identity.",
+                diagnostic=ambiguous_diagnostic,
             )
 
         duplicate_count = len(matches) - len(unique_rows)
@@ -299,6 +371,74 @@ def invalid_registry_lookup(error: Exception) -> RegistryLookup:
         status="snapshot_invalid",
         diagnostic=str(error),
     )
+
+
+def _other_identifiers(raw: dict[str, Any]) -> tuple[tuple[str, str], ...]:
+    pairs: list[tuple[str, str]] = []
+    raw_items = raw.get("other_identifiers")
+    if isinstance(raw_items, list):
+        for item in raw_items:
+            if not isinstance(item, dict):
+                continue
+            id_type = normalize_key_token(item.get("id_type") or item.get("type") or "")
+            value = normalize_key_token(item.get("value", ""))
+            if id_type and value:
+                pairs.append((id_type, value))
+    raw_type = normalize_key_token(raw.get("other_id_type", ""))
+    raw_value = normalize_key_token(raw.get("other_id_value", ""))
+    if raw_type and raw_value:
+        pairs.append((raw_type, raw_value))
+    return tuple(sorted(set(pairs)))
+
+
+def _canonical_lookup_id_type(id_type: object) -> str:
+    raw = normalize_key_token(id_type)
+    aliases = {
+        "BB_GLOBAL": "figi",
+        "COMPOSITE_FIGI": "composite_figi",
+        "CUSIP": "cusip",
+        "CUSIP_NUMBER": "cusip",
+        "FIGI": "figi",
+        "ID_BB_GLOBAL": "figi",
+        "ID_CUSIP": "cusip",
+        "ID_ISIN": "isin",
+        "ID_SEDOL": "sedol",
+        "ISIN": "isin",
+        "SEDOL": "sedol",
+        "SHARE_CLASS_FIGI": "share_class_figi",
+    }
+    if raw in aliases:
+        return aliases[raw]
+    if raw:
+        return f"other:{raw}"
+    return ""
+
+
+def _normalize_lookup_value(key_type: str, value: object) -> str:
+    if not key_type:
+        return ""
+    if key_type.startswith("other:"):
+        return normalize_key_token(value)
+    return normalize_identifier(value)
+
+
+def _row_matches_identifier(row: RegistryRow, key_type: str, value: str) -> bool:
+    if key_type == "figi":
+        return value in {row.figi, row.composite_figi, row.share_class_figi}
+    if key_type == "composite_figi":
+        return row.composite_figi == value
+    if key_type == "share_class_figi":
+        return row.share_class_figi == value
+    if key_type == "cusip":
+        return row.cusip == value
+    if key_type == "isin":
+        return row.isin == value
+    if key_type == "sedol":
+        return row.sedol == value
+    if key_type.startswith("other:"):
+        id_type = key_type.split(":", 1)[1]
+        return (id_type, value) in row.other_identifiers
+    return False
 
 
 def _normalize_json_value(value: Any) -> Any:

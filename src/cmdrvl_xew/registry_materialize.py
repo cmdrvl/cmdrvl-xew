@@ -19,8 +19,13 @@ class RegistryMaterializationError(ValueError):
     """Raised when corpus registry materialization cannot proceed."""
 
 
-_ID_COLUMNS = ("cusip", "isin", "sedol")
-_OPENFIGI_ID_TYPES = {"cusip": "ID_CUSIP", "isin": "ID_ISIN", "sedol": "ID_SEDOL"}
+_ID_COLUMNS = ("cusip", "isin", "sedol", "figi")
+_OPENFIGI_ID_TYPES = {
+    "cusip": "ID_CUSIP",
+    "isin": "ID_ISIN",
+    "sedol": "ID_SEDOL",
+    "figi": "ID_BB_GLOBAL",
+}
 
 
 def run_p008_materialize_registry(args: argparse.Namespace) -> int:

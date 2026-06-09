@@ -158,6 +158,8 @@ def _base_row_for_seed(seed: str, seed_column: str) -> dict[str, str]:
         return {"isin": seed}
     if seed_column == "sedol":
         return {"sedol": seed}
+    if seed_column == "figi":
+        return {"figi": seed}
     return {}
 
 
@@ -254,8 +256,25 @@ def _source_metadata(
             "source": normalize_text(build_json.get("source", "")),
             "seed_hash": normalize_text((build_json.get("seed") or {}).get("hash", "")) if isinstance(build_json.get("seed"), dict) else "",
             "id_type": normalize_text(((build_json.get("provider") or {}).get("options") or {}).get("id_type", "")) if isinstance(build_json.get("provider"), dict) else "",
+            "provider_options": _redacted_provider_options(build_json),
             "summary": build_json.get("summary", {}) if isinstance(build_json.get("summary"), dict) else {},
         }
+        if isinstance(build_json.get("seed"), dict):
+            source["build"]["seed"] = {
+                "path": normalize_text(build_json["seed"].get("path", "")),
+                "column": normalize_text(build_json["seed"].get("column", "")),
+                "hash": normalize_text(build_json["seed"].get("hash", "")),
+                "count": int(build_json["seed"].get("count", 0) or 0),
+            }
+        for key in ("corpus_id", "manifest_sha256", "seed_sha256", "canon_version"):
+            value = normalize_text(build_json.get(key, ""))
+            if value:
+                source["build"][key] = value
+        summary = source["build"]["summary"]
+        if isinstance(summary, dict):
+            source["build"]["unresolved_count"] = int(summary.get("unresolved_count", 0) or 0)
+            source["build"]["failure_count"] = int(summary.get("failure_count", 0) or 0)
+            source["build"]["ambiguous_count"] = int(summary.get("ambiguous_count", 0) or 0)
         build_path = registry_dir / "_build.json"
         if build_path.is_file():
             source["build"]["sha256"], source["build"]["bytes"] = sha256_file(build_path)
@@ -276,6 +295,23 @@ def _hash_registry_dir(registry_dir: Path) -> str:
         h.update(str(size).encode("ascii"))
         h.update(b"\n")
     return h.hexdigest()
+
+
+def _redacted_provider_options(build_json: dict[str, Any]) -> dict[str, str]:
+    provider = build_json.get("provider")
+    if not isinstance(provider, dict):
+        return {}
+    options = provider.get("options")
+    if not isinstance(options, dict):
+        return {}
+    redacted = {}
+    for key, value in sorted(options.items()):
+        normalized_key = normalize_text(key)
+        if "key" in normalized_key.lower() or "token" in normalized_key.lower() or "secret" in normalized_key.lower():
+            redacted[normalized_key] = "[redacted]"
+        else:
+            redacted[normalized_key] = normalize_text(value)
+    return redacted
 
 
 def _default_snapshot_id(registry_json: dict[str, Any], seed_column: str) -> str:

@@ -197,9 +197,9 @@ Pack flags:
 - History window (repeatable, all-or-nothing): `--history-accession`, `--history-primary-document-url`, `--history-primary-artifact-path`
 - Comparator (optional, all-or-nothing): `--comparator-accession`, `--comparator-primary-document-url`, `--comparator-primary-artifact-path`
 
-### Build P008 Registry Snapshots
+### Build Local Registry Snapshots
 
-`pack` consumes a local P008 snapshot only. OpenFIGI/canon provider calls are allowed only before pack generation, during registry maintenance.
+`pack` consumes local registry snapshots only. OpenFIGI/canon provider calls are allowed only before pack generation, during registry maintenance. The helper commands are still under `p008`, but P009 consumes the same snapshot format through exact CUSIP/ISIN/SEDOL/FIGI/typed-identifier lookups and never matches by ticker or name alone.
 
 Create corpus-scoped seed files and a registry materialization manifest:
 
@@ -212,7 +212,7 @@ cmdrvl-xew p008 materialize-registry \
   --provider-config base_url=http://127.0.0.1:9000/v3/mapping
 ```
 
-Add `--run-canon` to execute `canon registry build` for each non-empty CUSIP/ISIN/SEDOL seed file. For OpenFIGI, `--run-canon` requires a local twin `base_url` unless `--allow-live-provider` is set explicitly for a maintenance run.
+Add `--run-canon` to execute `canon registry build` for each non-empty CUSIP/ISIN/SEDOL/FIGI seed file. For OpenFIGI, `--run-canon` requires a local twin `base_url` unless `--allow-live-provider` is set explicitly for a maintenance run.
 
 Convert canon registry output into the local snapshot consumed by `pack`:
 

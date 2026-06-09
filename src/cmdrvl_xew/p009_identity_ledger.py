@@ -12,6 +12,11 @@ import json
 from dataclasses import dataclass
 from typing import Protocol
 
+from .instrument_registry import (
+    InstrumentRegistrySnapshot,
+    RegistryLookup as LocalRegistryLookup,
+    RegistryRow,
+)
 from .instrument_identity import normalize_text, normalize_ticker
 from .p009_observations import P009InstrumentObservation
 
@@ -157,6 +162,34 @@ class StaticP009RegistryLookup:
             if lookup is not None:
                 return _sort_lookup(lookup)
         return P009RegistryLookup(status="missing")
+
+
+@dataclass(frozen=True)
+class InstrumentRegistryP009Lookup:
+    """P009 adapter over the local canon/OpenFIGI snapshot format."""
+
+    snapshot: InstrumentRegistrySnapshot | None = None
+    snapshot_error: Exception | None = None
+
+    def lookup_observation(self, observation: P009InstrumentObservation) -> P009RegistryLookup:
+        if self.snapshot_error is not None:
+            return P009RegistryLookup(
+                status="snapshot_invalid",
+                diagnostic=str(self.snapshot_error),
+            )
+        if self.snapshot is None:
+            return P009RegistryLookup(
+                status="snapshot_absent",
+                diagnostic="No local registry snapshot was provided; no live lookup was attempted.",
+            )
+        for id_type, value in _p009_registry_lookup_keys(observation):
+            lookup = self.snapshot.lookup_identifier(id_type, value)
+            if lookup.status in {"resolved", "duplicate_identical", "ambiguous"}:
+                return _p009_lookup_from_local_registry(lookup, id_type=id_type, id_value=value)
+        return P009RegistryLookup(
+            status="missing",
+            diagnostic="No local registry snapshot row matched any exact reported identifier.",
+        )
 
 
 @dataclass(frozen=True)
@@ -607,6 +640,55 @@ def _reported_identity_keys(observation: P009InstrumentObservation) -> tuple[Ide
     for id_type, value in ids.other_identifiers:
         keys.append(IdentityKey("other_typed_identifier", f"{id_type}:{value}"))
     return tuple(sorted(set(keys)))
+
+
+def _p009_registry_lookup_keys(observation: P009InstrumentObservation) -> tuple[tuple[str, str], ...]:
+    ids = observation.identifiers
+    keys: list[tuple[str, str]] = []
+    for id_type, value in (
+        ("figi", ids.figi),
+        ("cusip", ids.cusip),
+        ("isin", ids.isin),
+        ("sedol", ids.sedol),
+    ):
+        if value:
+            keys.append((id_type, value))
+    keys.extend(ids.other_identifiers)
+    return tuple(keys)
+
+
+def _p009_lookup_from_local_registry(
+    lookup: LocalRegistryLookup,
+    *,
+    id_type: str,
+    id_value: str,
+) -> P009RegistryLookup:
+    rows = lookup.candidates if lookup.candidates else ((lookup.row,) if lookup.row is not None else ())
+    candidates = tuple(
+        _candidate_from_registry_row(row, id_type=id_type, id_value=id_value)
+        for row in rows
+        if row is not None
+    )
+    return P009RegistryLookup(
+        status=lookup.status,
+        candidates=tuple(sorted(candidates, key=lambda candidate: candidate.sort_key)),
+        diagnostic=lookup.diagnostic,
+    )
+
+
+def _candidate_from_registry_row(
+    row: RegistryRow,
+    *,
+    id_type: str,
+    id_value: str,
+) -> P009RegistryCandidate:
+    return P009RegistryCandidate(
+        figi=row.figi,
+        id_type=id_type,
+        id_value=id_value,
+        row_hash=row.stable_id,
+        name=row.name or row.security_title,
+    )
 
 
 def _lookup_registry(

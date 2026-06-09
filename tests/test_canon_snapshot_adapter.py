@@ -33,7 +33,7 @@ def _write_canon_registry(root: Path, *, ambiguous: bool = False, failures_only:
             "version": "canon_registry_build.v0",
             "source": "openfigi",
             "seed": {"path": "seed.csv", "column": "cusip", "hash": "seed-sha", "count": 1},
-            "provider": {"name": "openfigi", "options": {"id_type": "ID_CUSIP"}},
+            "provider": {"name": "openfigi", "options": {"id_type": "ID_CUSIP", "api_key": "secret"}},
             "summary": {"resolved_count": 0 if failures_only else 1, "failure_count": 1 if failures_only else 0},
         },
     )
@@ -126,6 +126,9 @@ class TestCanonSnapshotAdapter(unittest.TestCase):
             self.assertEqual(lookup.row.figi, "BBG005NPW5Z2")
             self.assertEqual(lookup.row.cusip, "594918BR4")
             self.assertEqual(lookup.row.name, "MICROSOFT CORP")
+            self.assertEqual(snapshot.metadata["source"]["build"]["provider_options"]["api_key"], "[redacted]")
+            self.assertEqual(snapshot.metadata["source"]["build"]["id_type"], "ID_CUSIP")
+            self.assertEqual(snapshot.metadata["source"]["build"]["failure_count"], 0)
             self.assertTrue(out.is_file())
 
     def test_preserves_multiple_figi_ambiguity(self):

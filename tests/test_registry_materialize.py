@@ -126,6 +126,36 @@ class TestRegistryMaterialize(unittest.TestCase):
         self.assertEqual(result["registry_builds"][0]["discovered_seed_count"], 2)
         self.assertEqual(result["registry_builds"][0]["skipped_existing_count"], 1)
 
+    def test_writes_figi_seed_files_for_p009_corpus_rows(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            manifest = root / "p009_rows.jsonl"
+            manifest.write_text(
+                json.dumps({"source_record_id": "row-1", "figi": "BBG000000001"}) + "\n",
+                encoding="utf-8",
+            )
+
+            result = materialize_registry_from_corpus(
+                corpus_id="p009-proof",
+                out_dir=root / "registry-work",
+                filing_manifest=manifest,
+                seed_files=[],
+                version="2026.06.09",
+                provider_source="openfigi",
+                provider_configs=[],
+                canon_bin="canon",
+                run_canon=False,
+                incremental=False,
+                allow_live_provider=False,
+            )
+
+            out_dir = root / "registry-work"
+            seed_text = (out_dir / "seeds" / "figi.csv").read_text(encoding="utf-8")
+
+        self.assertEqual(seed_text, "figi\nBBG000000001\n")
+        figi_builds = [build for build in result["registry_builds"] if build["column"] == "figi"]
+        self.assertEqual(figi_builds[0]["id_type"], "ID_BB_GLOBAL")
+
     def test_run_canon_with_twin_records_build_provenance(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

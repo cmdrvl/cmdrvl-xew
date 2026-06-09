@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 import unittest
 
+from cmdrvl_xew.instrument_registry import InstrumentRegistrySnapshot, RegistryRow
 from cmdrvl_xew.p009_identity_ledger import (
+    InstrumentRegistryP009Lookup,
     P009RegistryCandidate,
     P009RegistryLookup,
     StaticP009RegistryLookup,
@@ -42,6 +44,15 @@ def _graph(rows, registry=None):
     graph = build_alias_graph(ledger)
     events = classify_identity_drift(ledger, graph)
     return ledger, graph, events
+
+
+def _snapshot(rows) -> InstrumentRegistrySnapshot:
+    return InstrumentRegistrySnapshot(
+        snapshot_id="p009-test-snapshot",
+        generated_at="2026-06-09T00:00:00Z",
+        source={"producer": "canon", "dataset": "openfigi"},
+        rows=[RegistryRow.from_json(row, index) for index, row in enumerate(rows)],
+    )
 
 
 class TestP009IdentityLedger(unittest.TestCase):
@@ -110,6 +121,123 @@ class TestP009IdentityLedger(unittest.TestCase):
         )
         self.assertEqual(events[0].registry_candidates[0].figi, "BBG000000001")
 
+    def test_local_instrument_registry_provider_bridges_cusip_to_figi(self):
+        registry = InstrumentRegistryP009Lookup(
+            _snapshot(
+                [
+                    {
+                        "figi": "BBG000000001",
+                        "cusip": "123456AB7",
+                        "name": "Example Security",
+                    }
+                ]
+            )
+        )
+
+        _ledger, graph, events = _graph(
+            [
+                {"report_period": "2026-01-31", "cusip": "123456AB7"},
+                {"report_period": "2026-02-28", "figi": "BBG000000001"},
+            ],
+            registry=registry,
+        )
+
+        direct_lookup = registry.lookup_observation(
+            _observations([{"report_period": "2026-01-31", "cusip": "123456AB7"}])[0]
+        )
+        self.assertEqual(len(graph.chains), 1)
+        self.assertEqual(events[0].continuity_class, "registry_bridged")
+        self.assertEqual(direct_lookup.candidates[0].id_type, "cusip")
+        self.assertEqual(direct_lookup.candidates[0].id_value, "123456AB7")
+
+    def test_local_instrument_registry_provider_uses_exact_ids_only(self):
+        registry = InstrumentRegistryP009Lookup(
+            _snapshot(
+                [
+                    {"figi": "BBG000000001", "isin": "US123456AB78"},
+                    {"figi": "BBG000000002", "sedol": "2588173"},
+                    {
+                        "figi": "BBG000000003",
+                        "other_identifiers": [{"id_type": "internal_id", "value": "abc-123"}],
+                    },
+                ]
+            )
+        )
+
+        isin_lookup = registry.lookup_observation(
+            _observations([{"report_period": "2026-01-31", "isin": "US123456AB78"}])[0]
+        )
+        sedol_lookup = registry.lookup_observation(
+            _observations([{"report_period": "2026-01-31", "sedol": "2588173"}])[0]
+        )
+        figi_lookup = registry.lookup_observation(
+            _observations([{"report_period": "2026-01-31", "figi": "BBG000000002"}])[0]
+        )
+        other_lookup = registry.lookup_observation(
+            _observations(
+                [
+                    {
+                        "report_period": "2026-01-31",
+                        "other_id_type": "internal_id",
+                        "other_id_value": "abc-123",
+                    }
+                ]
+            )[0]
+        )
+        weak_only_lookup = registry.lookup_observation(
+            _observations(
+                [
+                    {
+                        "report_period": "2026-01-31",
+                        "ticker": "EXM",
+                        "title_or_description": "Example Security",
+                    }
+                ]
+            )[0]
+        )
+
+        self.assertEqual(isin_lookup.resolved_figi, "BBG000000001")
+        self.assertEqual(sedol_lookup.resolved_figi, "BBG000000002")
+        self.assertEqual(figi_lookup.resolved_figi, "BBG000000002")
+        self.assertEqual(other_lookup.resolved_figi, "BBG000000003")
+        self.assertEqual(weak_only_lookup.status, "missing")
+
+    def test_local_instrument_registry_provider_preserves_statuses(self):
+        ambiguous = InstrumentRegistryP009Lookup(
+            _snapshot(
+                [
+                    {"figi": "BBG000000001", "cusip": "123456AB7"},
+                    {"figi": "BBG000000002", "cusip": "123456AB7"},
+                ]
+            )
+        )
+        duplicate = InstrumentRegistryP009Lookup(
+            _snapshot(
+                [
+                    {"figi": "BBG000000001", "cusip": "123456AB7"},
+                    {"figi": "BBG000000001", "cusip": "123456AB7"},
+                ]
+            )
+        )
+
+        observation = _observations([{"report_period": "2026-01-31", "cusip": "123456AB7"}])[0]
+        self.assertEqual(
+            InstrumentRegistryP009Lookup().lookup_observation(observation).status,
+            "snapshot_absent",
+        )
+        self.assertEqual(
+            InstrumentRegistryP009Lookup(snapshot_error=ValueError("bad snapshot"))
+            .lookup_observation(observation)
+            .status,
+            "snapshot_invalid",
+        )
+        self.assertEqual(ambiguous.lookup_observation(observation).status, "ambiguous")
+        self.assertEqual(
+            [candidate.figi for candidate in ambiguous.lookup_observation(observation).candidates],
+            ["BBG000000001", "BBG000000002"],
+        )
+        self.assertEqual(duplicate.lookup_observation(observation).status, "duplicate_identical")
+
     def test_weak_continuity_only_never_creates_resolved_chain(self):
         _ledger, graph, events = _graph(
             [
@@ -152,7 +280,10 @@ class TestP009IdentityLedger(unittest.TestCase):
 
         self.assertEqual(len(graph.chains), 2)
         self.assertEqual(len(graph.weak_groups), 1)
-        self.assertEqual(graph.weak_groups[0].strong_chain_ids, tuple(sorted(graph.weak_groups[0].strong_chain_ids)))
+        self.assertEqual(
+            graph.weak_groups[0].strong_chain_ids,
+            tuple(sorted(graph.weak_groups[0].strong_chain_ids)),
+        )
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0].issue_codes, ("weak_key_temporal_collision",))
         self.assertEqual(events[0].continuity_class, "weak_collision")
@@ -180,7 +311,10 @@ class TestP009IdentityLedger(unittest.TestCase):
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0].issue_codes, ("registry_bridge_ambiguous",))
         self.assertEqual(events[0].continuity_class, "registry_ambiguous")
-        self.assertEqual([candidate.figi for candidate in events[0].registry_candidates], ["BBG000000001", "BBG000000002"])
+        self.assertEqual(
+            [candidate.figi for candidate in events[0].registry_candidates],
+            ["BBG000000001", "BBG000000002"],
+        )
 
     def test_ledger_graph_and_events_are_byte_stable(self):
         rows = [
