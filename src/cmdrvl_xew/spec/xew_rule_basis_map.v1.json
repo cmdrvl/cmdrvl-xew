@@ -282,6 +282,83 @@
       "pattern_id": "XEW-P001"
     },
     {
+      "citation": "XEW-P009 local methodology: identifier basis transition",
+      "issue_code": "identifier_basis_transition",
+      "notes": "P009 reports a transition only when deterministic evidence proves continuity across N-PORT periods and the strongest reported basis changes. Strong proof may come from exact identifier continuity, the same observation carrying multiple strong identifiers, or a local canon/OpenFIGI registry snapshot. Weak title, ticker, issuer, or economic similarity alone is not continuity proof.",
+      "pattern_id": "XEW-P009",
+      "retrieved_at": "2026-06-09T00:00:00Z",
+      "sha256": "9009900990099009900990099009900990099009900990099009900990099009",
+      "source": "OTHER",
+      "title": "CMD+RVL XEW-P009 Temporal Instrument Identity Drift methodology",
+      "url": "https://www.sec.gov/files/formn-port.pdf"
+    },
+    {
+      "citation": "XEW-P009 local methodology: strong identifier removed",
+      "issue_code": "strong_identifier_removed",
+      "notes": "P009 reports strong identifier removal when a previously reported strong identifier such as CUSIP, ISIN, FIGI, or typed strong identifier is absent in a later N-PORT observation for the same candidate chain. The detector must preserve unresolved status unless another strong basis or local registry bridge proves continuity.",
+      "pattern_id": "XEW-P009",
+      "retrieved_at": "2026-06-09T00:00:00Z",
+      "sha256": "9010901090109010901090109010901090109010901090109010901090109010",
+      "source": "OTHER",
+      "title": "CMD+RVL XEW-P009 strong-identifier removal contract",
+      "url": "https://www.sec.gov/files/formn-port.pdf"
+    },
+    {
+      "citation": "XEW-P009 local methodology: registry bridge available",
+      "issue_code": "registry_bridge_available",
+      "notes": "P009 may treat continuity as registry-bridged only when a local registry snapshot deterministically maps reported identifiers to the same canonical instrument. Pack-time detection must not call OpenFIGI, canon, twinning, HTTP, or model runtimes.",
+      "pattern_id": "XEW-P009",
+      "retrieved_at": "2026-06-09T00:00:00Z",
+      "sha256": "9020902090209020902090209020902090209020902090209020902090209020",
+      "source": "OTHER",
+      "title": "CMD+RVL XEW-P009 local registry snapshot boundary",
+      "url": "https://www.sec.gov/data-research/structured-data/taxonomies-schemas/technical-specifications-schemas"
+    },
+    {
+      "citation": "XEW-P009 local methodology: registry bridge missing",
+      "issue_code": "registry_bridge_missing",
+      "notes": "P009 reports a missing bridge when continuity would require registry evidence but the supplied local snapshot has no usable row. Missing registry evidence is emitted explicitly and must not be replaced by guessed FIGI, fuzzy matching, or live provider lookup.",
+      "pattern_id": "XEW-P009",
+      "retrieved_at": "2026-06-09T00:00:00Z",
+      "sha256": "9030903090309030903090309030903090309030903090309030903090309030",
+      "source": "OTHER",
+      "title": "CMD+RVL XEW-P009 missing registry bridge contract",
+      "url": "https://www.sec.gov/data-research/structured-data/taxonomies-schemas/technical-specifications-schemas"
+    },
+    {
+      "citation": "XEW-P009 local methodology: registry bridge ambiguous",
+      "issue_code": "registry_bridge_ambiguous",
+      "notes": "P009 reports an ambiguous bridge when local registry evidence returns multiple non-identical candidate instruments. Ambiguity is review-grade evidence and must be preserved with sorted candidates rather than silently selecting a winner.",
+      "pattern_id": "XEW-P009",
+      "retrieved_at": "2026-06-09T00:00:00Z",
+      "sha256": "9040904090409040904090409040904090409040904090409040904090409040",
+      "source": "OTHER",
+      "title": "CMD+RVL XEW-P009 ambiguous registry bridge contract",
+      "url": "https://www.sec.gov/data-research/structured-data/taxonomies-schemas/technical-specifications-schemas"
+    },
+    {
+      "citation": "XEW-P009 local methodology: weak continuity only",
+      "issue_code": "weak_continuity_only",
+      "notes": "P009 reports weak continuity only when observations can be associated solely through weak descriptive evidence such as issuer, title, ticker, value, or economic facts. Weak evidence cannot create a resolved canonical instrument identity and always requires human review.",
+      "pattern_id": "XEW-P009",
+      "retrieved_at": "2026-06-09T00:00:00Z",
+      "sha256": "9050905090509050905090509050905090509050905090509050905090509050",
+      "source": "OTHER",
+      "title": "CMD+RVL XEW-P009 weak continuity non-collapse contract",
+      "url": "https://www.sec.gov/files/formn-port.pdf"
+    },
+    {
+      "citation": "XEW-P009 local methodology: weak-key temporal collision",
+      "issue_code": "weak_key_temporal_collision",
+      "notes": "P009 reports a weak-key temporal collision when the same weak key maps to more than one strong identity over the history window. The detector must emit the collision and avoid collapsing the chain into one canonical instrument.",
+      "pattern_id": "XEW-P009",
+      "retrieved_at": "2026-06-09T00:00:00Z",
+      "sha256": "9060906090609060906090609060906090609060906090609060906090609060",
+      "source": "OTHER",
+      "title": "CMD+RVL XEW-P009 weak-key temporal collision contract",
+      "url": "https://www.sec.gov/files/formn-port.pdf"
+    },
+    {
       "citations": [
         {
           "citation": "Adaptation Marker M002: Extension Refactor Detection",

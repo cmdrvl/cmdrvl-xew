@@ -11,6 +11,7 @@ Alert-eligible canon patterns:
 - `XEW-P005` Inconsistent Taxonomy References (internal inconsistency focus)
 - `XEW-P006` Fee Exhibit Fragility (warning reclassification)
 - `XEW-P008` Instrument Identity Collapse (review-grade identity fragility)
+- `XEW-P009` Temporal Instrument Identity Drift for N-PORT (review-grade identity fragility)
 
 Roadmap (not alert-eligible in v1):
 - `XEW-P003` Inconsistent Dimensional Application
@@ -37,6 +38,7 @@ XEW-EP-<pack_id>/
     <downloaded EDGAR artifacts...>
   generated/
     instrument_identity_collapse.v1.json   # present when XEW-P008 emits collapse evidence
+    nport_identity_drift.v1.json           # present when XEW-P009 emits drift evidence
   toolchain/
     toolchain.json
 ```
@@ -106,6 +108,21 @@ P008 consumes these row fields when present:
 
 XEW validates and consumes this snapshot only. It does not generate the snapshot, call OpenFIGI, call canon/twinning, or perform live enrichment during detection.
 
+### 5) P009 local corpus and registry boundary
+P009 consumes a provider-neutral local corpus manifest and cached N-PORT filing artifacts. XEW does not discover filings from SEC, private warehouses, orchestrator APIs, or provider services during detection.
+
+When a local canon/OpenFIGI registry snapshot is supplied for P009, XEW copies the exact file into the Evidence Pack artifacts and records its hash in `pack_manifest.json`. P009 uses registry evidence only as a local deterministic bridge across reported identifiers. It never calls OpenFIGI, canon, twinning, HTTP, or model runtimes during scan, pack, or verify.
+
+P009 registry states:
+- `resolved`: one deterministic local registry row bridges the reported identifiers.
+- `missing`: a bridge is needed but the local snapshot has no usable row.
+- `ambiguous`: multiple non-identical local rows match the evidence.
+- `duplicate_identical`: duplicate local rows are byte-equivalent for P009 identity purposes.
+- `snapshot_absent`: no local snapshot was supplied.
+- `snapshot_invalid`: the supplied local snapshot failed validation.
+
+Weak N-PORT continuity evidence such as issuer name, title, ticker, value, or other economic facts cannot create a resolved canonical instrument identity. Weak evidence can only support `weak_continuity_only` or `weak_key_temporal_collision` findings.
+
 ## Hashing Rules (tamper-evident)
 ### Per-file hashes
 For each file listed in `files[]`, compute:
@@ -159,6 +176,12 @@ Canonical signature rules (v1; ASCII only; use Clark notation for QNames):
   - weak-key signatures use `P008:weak|ticker=<ticker>|exchange=<exchange>`.
   - collapse instance signatures use `P008|collapse|<weak_key>|<sorted_member_instrument_signatures>`.
   - `instance_id = sha256(collapse_instance_signature)`.
+- `XEW-P009` (N-PORT temporal instrument identity drift):
+  - observation signatures use `P009:observation|<accession>|<report_period>|<series_key>|<holding_ordinal>|<source_path>|<strong_id_fields>|<weak_key_fields>`.
+  - event signatures use `P009:event|<issue_codes_csv>|<series_key>|<ordered_observation_signatures>|<basis_before>|<basis_after>|<registry_status>|<registry_candidate_ids>`.
+  - weak-key signatures use `P009:weak|issuer=<normalized_issuer>|title=<normalized_title>|ticker=<normalized_ticker>|economic=<normalized_economic_facts>`.
+  - weak-key signatures never become canonical instrument signatures without exact identifier or local registry support.
+  - `instance_id = sha256(event_signature)`.
 
 Where:
 - `sha256(x)`: sha256 over UTF-8 bytes of `x` with no trailing newline, returned as lowercase hex.
@@ -207,7 +230,47 @@ To avoid "it worked on my machine" evidence packs:
 - Record toolchain versions and taxonomy inputs used to build the DTS.
 - Cap noisy instance lists with explicit truncation fields (see schema).
 - Do not emit semantic claims that cannot be derived from artifacts (e.g., "semantically unrelated" anchoring).
-- P008 must not call OpenFIGI, canon, twinning, HTTP, or LLM/model runtimes during detection. Registry evidence must come from a local snapshot copied into the Evidence Pack.
+- P008 and P009 must not call OpenFIGI, canon, twinning, HTTP, or LLM/model runtimes during detection. Registry evidence must come from a local snapshot copied into the Evidence Pack.
+
+## P009 Generated Artifact Contract
+
+When P009 emits evidence, `generated/nport_identity_drift.v1.json` is required and must be listed in `pack_manifest.json` with role `generated`.
+
+Required top-level fields:
+- `schema_version`: `1.0`.
+- `inputs`: manifest hash, current accession, history accessions, cached artifact paths, and parser mode.
+- `registry_snapshot`: local snapshot metadata and copied artifact hash when supplied.
+- `series`: series key, CIK, series id/name when present, and ordered accessions.
+- `observations`: deterministic observation refs with report period, holding ordinal, reported identifiers, weak keys, and source XML paths.
+- `identity_chains`: exact or registry-bridged chains only.
+- `drift_events`: ordered P009 events with issue codes, continuity class, basis before/after, registry status, observation refs, and source paths.
+- `findings`: finding and instance ids that appear in `xew_findings.json`.
+- `diagnostics`: parser, corpus, registry, and truncation diagnostics.
+- `hashes`: sha256 values for source bytes, registry snapshot bytes, and generated artifact inputs.
+
+Allowed P009 issue codes:
+- `identifier_basis_transition`
+- `strong_identifier_removed`
+- `registry_bridge_available`
+- `registry_bridge_missing`
+- `registry_bridge_ambiguous`
+- `weak_continuity_only`
+- `weak_key_temporal_collision`
+
+Allowed continuity classes:
+- `proven_transition`
+- `registry_bridged`
+- `registry_missing`
+- `registry_ambiguous`
+- `weak_unresolved`
+- `weak_collision`
+
+P009 output ordering:
+1. Sort series by `series_key`.
+2. Sort observations by report period, accession, holding ordinal, and source path.
+3. Sort registry candidates by FIGI if present, then id type, id value, and stable row hash.
+4. Sort events by continuity class priority, issue-code list, newest report period descending, and event id.
+5. Sort diagnostics by code, source path, and stable diagnostic id.
 
 ## Artifact Preparation (flatten)
 

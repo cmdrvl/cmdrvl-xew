@@ -45,6 +45,17 @@
         "detector_group_cap_exceeded"
       ]
     },
+    "XEW-P009": {
+      "issue_codes": [
+        "identifier_basis_transition",
+        "strong_identifier_removed",
+        "registry_bridge_available",
+        "registry_bridge_missing",
+        "registry_bridge_ambiguous",
+        "weak_continuity_only",
+        "weak_key_temporal_collision"
+      ]
+    },
     "XEW-M002": {
       "issue_codes": [
         "extension_refactor_event"

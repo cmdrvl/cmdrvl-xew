@@ -278,7 +278,7 @@
         "finding_id": { "type": "string", "minLength": 1 },
         "pattern_id": {
           "type": "string",
-          "enum": ["XEW-P001", "XEW-P002", "XEW-P004", "XEW-P005", "XEW-P007", "XEW-P008"],
+          "enum": ["XEW-P001", "XEW-P002", "XEW-P004", "XEW-P005", "XEW-P007", "XEW-P008", "XEW-P009"],
           "description": "V1 shipping pattern IDs. P003 and P006 are roadmap only."
         },
         "pattern_name": { "type": "string", "minLength": 1 },
@@ -339,7 +339,8 @@
             "fact_numeric_typing_issue",
             "taxonomy_reference_issue",
             "duplicate_context_signature",
-            "instrument_identity_collapse"
+            "instrument_identity_collapse",
+            "nport_identity_drift"
           ]
         },
         "primary": { "type": "boolean" },
@@ -372,6 +373,10 @@
         {
           "if": { "properties": { "kind": { "const": "instrument_identity_collapse" } } },
           "then": { "properties": { "data": { "$ref": "#/$defs/p008_instrument_identity_collapse" } } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "nport_identity_drift" } } },
+          "then": { "properties": { "data": { "$ref": "#/$defs/p009_nport_identity_drift" } } }
         }
       ]
     },
@@ -670,6 +675,172 @@
         "market_sector": { "type": "string" },
         "security_type": { "type": "string" },
         "name": { "type": "string" }
+      }
+    },
+    "p009_nport_identity_drift": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["issue_codes", "continuity_class", "series", "event_count", "events"],
+      "properties": {
+        "issue_codes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "enum": [
+              "identifier_basis_transition",
+              "strong_identifier_removed",
+              "registry_bridge_available",
+              "registry_bridge_missing",
+              "registry_bridge_ambiguous",
+              "weak_continuity_only",
+              "weak_key_temporal_collision"
+            ]
+          }
+        },
+        "continuity_class": {
+          "type": "string",
+          "enum": [
+            "proven_transition",
+            "registry_bridged",
+            "registry_missing",
+            "registry_ambiguous",
+            "weak_unresolved",
+            "weak_collision"
+          ]
+        },
+        "series": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["series_key", "accessions"],
+          "properties": {
+            "series_key": { "type": "string", "minLength": 1 },
+            "series_id": { "type": "string" },
+            "series_name": { "type": "string" },
+            "cik": { "type": "string" },
+            "accessions": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "string", "pattern": "^\\d{10}-\\d{2}-\\d{6}$" }
+            }
+          }
+        },
+        "event_count": { "type": "integer", "minimum": 1 },
+        "events": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/p009_identity_drift_event" }
+        },
+        "registry_snapshot": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "deterministic_repair": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["target", "action"],
+            "properties": {
+              "target": { "type": "string", "minLength": 1 },
+              "action": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["issue_code", "message"],
+            "properties": {
+              "issue_code": { "type": "string", "minLength": 1 },
+              "message": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "p009_identity_drift_event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["event_id", "issue_codes", "continuity_class", "basis_before", "basis_after", "observations"],
+      "properties": {
+        "event_id": { "$ref": "#/$defs/sha256" },
+        "issue_codes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "enum": [
+              "identifier_basis_transition",
+              "strong_identifier_removed",
+              "registry_bridge_available",
+              "registry_bridge_missing",
+              "registry_bridge_ambiguous",
+              "weak_continuity_only",
+              "weak_key_temporal_collision"
+            ]
+          }
+        },
+        "continuity_class": {
+          "type": "string",
+          "enum": [
+            "proven_transition",
+            "registry_bridged",
+            "registry_missing",
+            "registry_ambiguous",
+            "weak_unresolved",
+            "weak_collision"
+          ]
+        },
+        "basis_before": { "$ref": "#/$defs/p009_identity_basis" },
+        "basis_after": { "$ref": "#/$defs/p009_identity_basis" },
+        "registry_status": {
+          "type": "string",
+          "enum": ["resolved", "missing", "ambiguous", "duplicate_identical", "snapshot_absent", "snapshot_invalid"]
+        },
+        "observations": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/p009_observation_ref" }
+        },
+        "registry_candidates": {
+          "type": "array",
+          "items": { "type": "object", "additionalProperties": true }
+        }
+      }
+    },
+    "p009_identity_basis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["basis_type"],
+      "properties": {
+        "basis_type": {
+          "type": "string",
+          "enum": ["figi", "cusip", "isin", "sedol", "other_typed_identifier", "ticker", "weak_descriptive", "absent"]
+        },
+        "basis_value": { "type": "string" },
+        "id_type": { "type": "string" },
+        "registry_status": { "type": "string" }
+      }
+    },
+    "p009_observation_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["accession", "report_period", "holding_ordinal", "identity_basis", "source_paths"],
+      "properties": {
+        "accession": { "type": "string", "pattern": "^\\d{10}-\\d{2}-\\d{6}$" },
+        "report_period": { "type": "string", "format": "date" },
+        "holding_ordinal": { "type": "integer", "minimum": 0 },
+        "identity_basis": { "$ref": "#/$defs/p009_identity_basis" },
+        "issuer_name": { "type": "string" },
+        "title_or_description": { "type": "string" },
+        "source_paths": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
       }
     },
     "p008_fact_evidence": {
