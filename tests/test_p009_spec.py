@@ -58,11 +58,12 @@ class TestP009Spec(unittest.TestCase):
 
         finding_pattern_enum = schema["$defs"]["finding"]["properties"]["pattern_id"]["enum"]
         instance_kind_enum = schema["$defs"]["instance"]["properties"]["kind"]["enum"]
-        p009_data = schema["$defs"]["p009_nport_identity_drift"]
+        p009_data = schema["$defs"]["p009_instrument_identity_drift"]
         p009_event = schema["$defs"]["p009_identity_drift_event"]
 
         self.assertIn("XEW-P009", finding_pattern_enum)
-        self.assertIn("nport_identity_drift", instance_kind_enum)
+        self.assertIn("instrument_identity_drift", instance_kind_enum)
+        self.assertNotIn("nport_identity_drift", instance_kind_enum)
         self.assertEqual(
             p009_data["properties"]["issue_codes"]["items"]["enum"],
             EXPECTED_P009_CODES,
@@ -73,11 +74,15 @@ class TestP009Spec(unittest.TestCase):
         )
         self.assertIn("continuity_class", p009_data["required"])
         self.assertIn("events", p009_data["required"])
+        self.assertIn("source_scope", p009_data["required"])
+        self.assertNotIn("series", p009_data["required"])
 
     def test_weak_p009_evidence_cannot_be_encoded_as_resolved_continuity(self):
         schema = _load_json("src/cmdrvl_xew/schemas/xew_findings.schema.v1.json")
         continuity_classes = set(
-            schema["$defs"]["p009_nport_identity_drift"]["properties"]["continuity_class"]["enum"]
+            schema["$defs"]["p009_instrument_identity_drift"]["properties"]["continuity_class"][
+                "enum"
+            ]
         )
         event_continuity_classes = set(
             schema["$defs"]["p009_identity_drift_event"]["properties"]["continuity_class"]["enum"]
@@ -95,6 +100,8 @@ class TestP009Spec(unittest.TestCase):
             contract_text,
             re.compile(r"Weak .*cannot create a resolved canonical instrument identity", re.I),
         )
+        self.assertIn("generated/instrument_identity_drift.v1.json", contract_text)
+        self.assertNotIn("generated/nport_identity_drift.v1.json", contract_text)
 
 
 if __name__ == "__main__":

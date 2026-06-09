@@ -11,7 +11,7 @@ Alert-eligible canon patterns:
 - `XEW-P005` Inconsistent Taxonomy References (internal inconsistency focus)
 - `XEW-P006` Fee Exhibit Fragility (warning reclassification)
 - `XEW-P008` Instrument Identity Collapse (review-grade identity fragility)
-- `XEW-P009` Temporal Instrument Identity Drift for N-PORT (review-grade identity fragility)
+- `XEW-P009` Temporal Instrument Identity Drift (review-grade identity fragility)
 
 Roadmap (not alert-eligible in v1):
 - `XEW-P003` Inconsistent Dimensional Application
@@ -38,7 +38,7 @@ XEW-EP-<pack_id>/
     <downloaded EDGAR artifacts...>
   generated/
     instrument_identity_collapse.v1.json   # present when XEW-P008 emits collapse evidence
-    nport_identity_drift.v1.json           # present when XEW-P009 emits drift evidence
+    instrument_identity_drift.v1.json      # present when XEW-P009 emits drift evidence
   toolchain/
     toolchain.json
 ```
@@ -109,7 +109,7 @@ P008 consumes these row fields when present:
 XEW validates and consumes this snapshot only. It does not generate the snapshot, call OpenFIGI, call canon/twinning, or perform live enrichment during detection.
 
 ### 5) P009 local corpus and registry boundary
-P009 consumes a provider-neutral local corpus manifest and cached N-PORT filing artifacts. XEW does not discover filings from SEC, private warehouses, orchestrator APIs, or provider services during detection.
+P009 consumes provider-neutral local corpus and observation artifacts. Source-specific adapters may produce observations from iXBRL facts, XML filings, or pre-extracted local exports, but the P009 detector core consumes only the normalized observation contract. XEW does not discover filings from SEC, private warehouses, orchestrator APIs, or provider services during detection.
 
 When a local canon/OpenFIGI registry snapshot is supplied for P009, XEW copies the exact file into the Evidence Pack artifacts and records its hash in `pack_manifest.json`. P009 uses registry evidence only as a local deterministic bridge across reported identifiers. It never calls OpenFIGI, canon, twinning, HTTP, or model runtimes during scan, pack, or verify.
 
@@ -121,7 +121,7 @@ P009 registry states:
 - `snapshot_absent`: no local snapshot was supplied.
 - `snapshot_invalid`: the supplied local snapshot failed validation.
 
-Weak N-PORT continuity evidence such as issuer name, title, ticker, value, or other economic facts cannot create a resolved canonical instrument identity. Weak evidence can only support `weak_continuity_only` or `weak_key_temporal_collision` findings.
+Weak continuity evidence such as issuer name, title, ticker, value, or other economic facts cannot create a resolved canonical instrument identity. Weak evidence can only support `weak_continuity_only` or `weak_key_temporal_collision` findings.
 
 ## Hashing Rules (tamper-evident)
 ### Per-file hashes
@@ -176,9 +176,9 @@ Canonical signature rules (v1; ASCII only; use Clark notation for QNames):
   - weak-key signatures use `P008:weak|ticker=<ticker>|exchange=<exchange>`.
   - collapse instance signatures use `P008|collapse|<weak_key>|<sorted_member_instrument_signatures>`.
   - `instance_id = sha256(collapse_instance_signature)`.
-- `XEW-P009` (N-PORT temporal instrument identity drift):
-  - observation signatures use `P009:observation|<accession>|<report_period>|<series_key>|<holding_ordinal>|<source_path>|<strong_id_fields>|<weak_key_fields>`.
-  - event signatures use `P009:event|<issue_codes_csv>|<series_key>|<ordered_observation_signatures>|<basis_before>|<basis_after>|<registry_status>|<registry_candidate_ids>`.
+- `XEW-P009` (temporal instrument identity drift):
+  - observation signatures use `P009:observation|<source_family>|<source_adapter>|<accession>|<report_period>|<scope_key>|<observation_ordinal>|<source_path>|<strong_id_fields>|<weak_key_fields>`.
+  - event signatures use `P009:event|<issue_codes_csv>|<scope_key>|<ordered_observation_signatures>|<basis_before>|<basis_after>|<registry_status>|<registry_candidate_ids>`.
   - weak-key signatures use `P009:weak|issuer=<normalized_issuer>|title=<normalized_title>|ticker=<normalized_ticker>|economic=<normalized_economic_facts>`.
   - weak-key signatures never become canonical instrument signatures without exact identifier or local registry support.
   - `instance_id = sha256(event_signature)`.
@@ -234,14 +234,14 @@ To avoid "it worked on my machine" evidence packs:
 
 ## P009 Generated Artifact Contract
 
-When P009 emits evidence, `generated/nport_identity_drift.v1.json` is required and must be listed in `pack_manifest.json` with role `generated`.
+When P009 emits evidence, `generated/instrument_identity_drift.v1.json` is required and must be listed in `pack_manifest.json` with role `generated`.
 
 Required top-level fields:
 - `schema_version`: `1.0`.
-- `inputs`: manifest hash, current accession, history accessions, cached artifact paths, and parser mode.
+- `inputs`: manifest hash, current accession, history accessions, cached artifact paths, source family, source adapter, and parser mode when a parser adapter is used.
 - `registry_snapshot`: local snapshot metadata and copied artifact hash when supplied.
-- `series`: series key, CIK, series id/name when present, and ordered accessions.
-- `observations`: deterministic observation refs with report period, holding ordinal, reported identifiers, weak keys, and source XML paths.
+- `source_scope`: source-defined scope key, source family, source adapter, CIK when present, series id/name when present, and ordered accessions.
+- `observations`: deterministic observation refs with report period when present, observation ordinal, reported identifiers, weak keys, and source paths.
 - `identity_chains`: exact or registry-bridged chains only.
 - `drift_events`: ordered P009 events with issue codes, continuity class, basis before/after, registry status, observation refs, and source paths.
 - `findings`: finding and instance ids that appear in `xew_findings.json`.
@@ -266,8 +266,8 @@ Allowed continuity classes:
 - `weak_collision`
 
 P009 output ordering:
-1. Sort series by `series_key`.
-2. Sort observations by report period, accession, holding ordinal, and source path.
+1. Sort source scopes by `scope_key`.
+2. Sort observations by source family, source adapter, report period when present, accession, observation ordinal, and source path.
 3. Sort registry candidates by FIGI if present, then id type, id value, and stable row hash.
 4. Sort events by continuity class priority, issue-code list, newest report period descending, and event id.
 5. Sort diagnostics by code, source path, and stable diagnostic id.

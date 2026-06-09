@@ -340,7 +340,7 @@
             "taxonomy_reference_issue",
             "duplicate_context_signature",
             "instrument_identity_collapse",
-            "nport_identity_drift"
+            "instrument_identity_drift"
           ]
         },
         "primary": { "type": "boolean" },
@@ -375,8 +375,8 @@
           "then": { "properties": { "data": { "$ref": "#/$defs/p008_instrument_identity_collapse" } } }
         },
         {
-          "if": { "properties": { "kind": { "const": "nport_identity_drift" } } },
-          "then": { "properties": { "data": { "$ref": "#/$defs/p009_nport_identity_drift" } } }
+          "if": { "properties": { "kind": { "const": "instrument_identity_drift" } } },
+          "then": { "properties": { "data": { "$ref": "#/$defs/p009_instrument_identity_drift" } } }
         }
       ]
     },
@@ -677,10 +677,10 @@
         "name": { "type": "string" }
       }
     },
-    "p009_nport_identity_drift": {
+    "p009_instrument_identity_drift": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["issue_codes", "continuity_class", "series", "event_count", "events"],
+      "required": ["issue_codes", "continuity_class", "source_scope", "event_count", "events"],
       "properties": {
         "issue_codes": {
           "type": "array",
@@ -709,12 +709,14 @@
             "weak_collision"
           ]
         },
-        "series": {
+        "source_scope": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["series_key", "accessions"],
+          "required": ["scope_key", "accessions"],
           "properties": {
-            "series_key": { "type": "string", "minLength": 1 },
+            "scope_key": { "type": "string", "minLength": 1 },
+            "source_family": { "type": "string" },
+            "source_adapter": { "type": "string" },
             "series_id": { "type": "string" },
             "series_name": { "type": "string" },
             "cik": { "type": "string" },
@@ -828,11 +830,13 @@
     "p009_observation_ref": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["accession", "report_period", "holding_ordinal", "identity_basis", "source_paths"],
+      "required": ["accession", "observation_ordinal", "identity_basis", "source_paths"],
       "properties": {
         "accession": { "type": "string", "pattern": "^\\d{10}-\\d{2}-\\d{6}$" },
         "report_period": { "type": "string", "format": "date" },
-        "holding_ordinal": { "type": "integer", "minimum": 0 },
+        "observation_ordinal": { "type": "integer", "minimum": 0 },
+        "source_family": { "type": "string" },
+        "source_adapter": { "type": "string" },
         "identity_basis": { "$ref": "#/$defs/p009_identity_basis" },
         "issuer_name": { "type": "string" },
         "title_or_description": { "type": "string" },
