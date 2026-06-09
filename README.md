@@ -332,6 +332,8 @@ Workflow outputs:
 - `pack/`: verified Evidence Pack for the selected current source and deterministic history inputs.
 - `p009_identity_fragility_summary.v1.json`: compact machine-readable summary for `cmdrvl-gtm/skills/xew-identity-fragility`.
 
+For the Bloomberg-facing operator narrative, artifact walkthrough, and fallback synthetic path, see `docs/P009_BLOOMBERG_RUNBOOK.md`.
+
 ### Install taxonomy packages for offline production runs
 
 For deterministic production use, run Arelle in `offline_only` mode with a pinned set of local taxonomy packages (e.g., US-GAAP, DEI, SRT, SEC enumerations).
@@ -478,16 +480,16 @@ Hosted systems (outside this repo) can provide:
 
 Current status:
 - Evidence Pack writer and verifier are implemented.
-- v1 detectors (P001/P002/P004/P005/P008) are implemented; `pack` loads a real Arelle model by default (install `arelle-release`). Use `--no-arelle` to force the mock model, or `--require-arelle` to fail fast if Arelle cannot be used.
+- v1 detectors (P001/P002/P004/P005/P008/P009) are implemented; `pack` loads a real Arelle model by default (install `arelle-release`). Use `--no-arelle` to force the mock model, or `--require-arelle` to fail fast if Arelle cannot be used.
 - Arelle is pinned through the `arelle`/`prod` extras for deterministic production installs.
 - Cached S3 artifact ingress supports both `extracted/YYYYMMDD/ACCESSION/` and complete-submission `xbrl/YYYYMMDD/ACCESSION.nc` layouts.
-- P008 can materialize corpus-scoped seed files for canon/OpenFIGI and adapt local canon registry output into a P008 snapshot.
+- P008 and P009 can materialize corpus-scoped seed files for canon/OpenFIGI and consume local canon registry snapshots.
 
 Next steps (v1):
 - Harden real-S3 Arelle regression coverage for broader filing sets.
 - Freeze issue-code enums and pin rule basis per shipped issue code.
 - Add deterministic truncation/capping rules for large instance lists.
-- Package the operator-facing identity-fragility runbook around the S3, Arelle, canon snapshot, pack, and verify steps.
+- Exercise the operator-facing P009 runbook against a real cached corpus slice and keep the synthetic fallback current.
 
 ## License
 
