@@ -167,7 +167,7 @@ def materialize_registry_from_corpus(
             "discovered_seed_count": len(discovered_values),
             "skipped_existing_count": skipped_existing_count,
             "registry_dir": str(registry_dir),
-            "command": command,
+            "command": _sanitize_command(command),
             "status": "planned",
         }
         if run_canon:
@@ -384,6 +384,24 @@ def _sanitize_provider_options(options: dict[str, str]) -> dict[str, str]:
         else:
             redacted[key] = value
     return redacted
+
+
+def _sanitize_command(command: list[str]) -> list[str]:
+    sanitized = []
+    redact_next = False
+    for item in command:
+        if redact_next:
+            key = item.split("=", 1)[0]
+            if "key" in key.lower() or "token" in key.lower() or "secret" in key.lower():
+                sanitized.append(f"{key}=[redacted]")
+            else:
+                sanitized.append(item)
+            redact_next = False
+            continue
+        sanitized.append(item)
+        if item == "--provider-config":
+            redact_next = True
+    return sanitized
 
 
 def _require_token(value: str, label: str) -> str:

@@ -301,6 +301,37 @@ P009 scan outputs:
 
 If `--registry-snapshot` is omitted, P009 still scans deterministically and reports unresolved weak-key collisions or missing bridge evidence. A registry snapshot can convert a CUSIP-to-FIGI history into a proven local bridge, but stable CUSIP/ISIN continuity is not ranked as a fragility candidate merely because the registry contains a matching row.
 
+For the end-to-end identity-fragility workflow used by CMD+RVL skills, use
+`prove-identity-drift`. The skill or upstream infrastructure is responsible for
+asking orchestrator, materializing cached artifacts, and writing the
+provider-neutral manifest/observations. XEW then consumes only those local files:
+
+```bash
+cmdrvl-xew p009 prove-identity-drift \
+  --manifest /tmp/p009-corpus-manifest.jsonl \
+  --observations /tmp/p009-observations.jsonl \
+  --registry-snapshot /tmp/p009-openfigi-snapshot.json \
+  --artifacts-root /tmp/p009-cached-artifacts \
+  --out /tmp/p009-workflow \
+  --select-rank 1 \
+  --retrieved-at 2026-06-09T00:00:00Z
+```
+
+Use `--dry-run` to print the ranked candidate, registry seed/materialization
+plan, `pack` command, and `verify-pack` command without writing files or calling
+providers. Use `--stop-after scan` or `--stop-after seeds` when an operator wants
+to inspect candidates or populate canon/OpenFIGI registry data before pack
+generation. `--run-canon` is opt-in and follows the same maintenance-time local
+twin/live-provider guardrails as the P008 registry helper; provider secrets are
+redacted from workflow output.
+
+Workflow outputs:
+- `scan/`: the same stable P009 scan artifacts produced by `scan-corpus`.
+- `registry_seeds/`: selected-candidate CUSIP/ISIN/SEDOL/FIGI seed CSV files and JSONL seed evidence.
+- `selected/p009_selected_observations.v1.jsonl`: the selected source-neutral observations copied into the Evidence Pack.
+- `pack/`: verified Evidence Pack for the selected current source and deterministic history inputs.
+- `p009_identity_fragility_summary.v1.json`: compact machine-readable summary for `cmdrvl-gtm/skills/xew-identity-fragility`.
+
 ### Install taxonomy packages for offline production runs
 
 For deterministic production use, run Arelle in `offline_only` mode with a pinned set of local taxonomy packages (e.g., US-GAAP, DEI, SRT, SEC enumerations).

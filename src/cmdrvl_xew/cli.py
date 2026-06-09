@@ -17,6 +17,7 @@ from .identity_fragility import run_p008_identity_fragility
 from .orchestrator_manifest import run_p008_manifest_from_orchestrator
 from .p008_scan import run_p008_scan_corpus
 from .p009_scan import run_p009_scan_corpus
+from .p009_workflow import run_p009_identity_drift_workflow
 from .pack import run_pack
 from .registry_materialize import run_p008_materialize_registry
 from .s3_source import run_fetch_s3
@@ -703,6 +704,38 @@ def main(argv: list[str] | None = None) -> int:
     p009_scan.add_argument("--registry-snapshot", help="Local canon/OpenFIGI registry snapshot JSON")
     p009_scan.add_argument("--out-dir", required=True)
     p009_scan.add_argument("--limit", type=int)
+    p009_workflow = p009_sub.add_parser(
+        "prove-identity-drift",
+        help="Run or dry-run the P009 broad-corpus scan, registry seed, pack, and verify workflow",
+    )
+    p009_workflow.add_argument("--manifest", required=True, help="P009 corpus manifest JSONL/CSV")
+    p009_workflow.add_argument("--observations", help="P009 normalized observations JSONL/CSV")
+    p009_workflow.add_argument("--registry-snapshot", help="Local canon/OpenFIGI registry snapshot JSON")
+    p009_workflow.add_argument("--artifacts-root", required=True, help="Root for manifest local_path cached artifacts")
+    p009_workflow.add_argument("--out", required=True, help="Workflow output directory")
+    p009_workflow.add_argument("--select-rank", type=int, default=1, help="Ranked P009 candidate to package")
+    p009_workflow.add_argument("--limit", type=int, help="Optional scan candidate limit")
+    p009_workflow.add_argument("--dry-run", action="store_true", help="Print the deterministic plan without writing artifacts")
+    p009_workflow.add_argument("--stop-after", choices=["scan", "seeds"], help="Stop after scan outputs or seed generation")
+    p009_workflow.add_argument("--pack-id", help="Evidence Pack id; defaults to selected P009 candidate id prefix")
+    p009_workflow.add_argument("--retrieved-at", help="Fixed retrieval timestamp for reproducible pack output")
+    p009_workflow.add_argument("--issuer-name")
+    p009_workflow.add_argument("--cik")
+    p009_workflow.add_argument("--form")
+    p009_workflow.add_argument("--filed-date")
+    p009_workflow.add_argument("--period-end")
+    p009_workflow.add_argument("--primary-document-url")
+    p009_workflow.add_argument("--require-arelle", action="store_true")
+    p009_workflow.add_argument("--corpus-id", help="Corpus id for registry materialization planning")
+    p009_workflow.add_argument("--registry-version", default="p009")
+    p009_workflow.add_argument("--provider-source", default="openfigi")
+    p009_workflow.add_argument("--provider-config", action="append", help="Provider option key=value; secrets are redacted in outputs")
+    p009_workflow.add_argument("--canon-bin", default="canon")
+    p009_workflow.add_argument("--materialize-registry", action="store_true", help="Write registry materialization manifest before pack")
+    p009_workflow.add_argument("--run-canon", action="store_true", help="Execute canon registry build during materialization")
+    p009_workflow.add_argument("--incremental", action="store_true")
+    p009_workflow.add_argument("--allow-live-provider", action="store_true")
+    p009_workflow.add_argument("--verbose", action="store_true", help="Stream raw pack/verify output")
 
     args = p.parse_args(argv)
 
@@ -750,6 +783,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "p009":
         if args.p009_cmd == "scan-corpus":
             return run_p009_scan_corpus(args)
+        if args.p009_cmd == "prove-identity-drift":
+            return run_p009_identity_drift_workflow(args)
         p.error(f"unknown p009 command: {args.p009_cmd}")
 
     p.error(f"unknown command: {args.cmd}")

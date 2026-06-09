@@ -53,6 +53,8 @@ class TestRegistryMaterialize(unittest.TestCase):
         self.assertEqual(len(result["registry_builds"]), 3)
         self.assertEqual(persisted["provider_options"]["api_key"], "[redacted]")
         self.assertIn("--provider-config", result["registry_builds"][0]["command"])
+        self.assertNotIn("secret", json.dumps(result["registry_builds"], sort_keys=True))
+        self.assertIn("api_key=[redacted]", result["registry_builds"][0]["command"])
 
     def test_run_canon_requires_local_twin_or_live_approval_for_openfigi(self):
         with tempfile.TemporaryDirectory() as td:
