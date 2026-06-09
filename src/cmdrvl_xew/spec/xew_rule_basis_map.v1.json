@@ -220,6 +220,26 @@
       "pattern_id": "XEW-P005"
     },
     {
+      "citation": "XEW-P008 local methodology: deterministic registered-instrument identity collapse",
+      "issue_code": "weak_identity_collision",
+      "notes": "P008 is an XEW methodology check, not an EDGAR validity rule. It reports cases where multiple deterministic registered-instrument signatures share the same weak ticker/exchange identity facts and therefore require instrument-level review.",
+      "pattern_id": "XEW-P008",
+      "retrieved_at": "2026-06-09T00:00:00Z",
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "source": "OTHER",
+      "title": "CMD+RVL XEW-P008 Instrument Identity Collapse methodology"
+    },
+    {
+      "citation": "XEW-P008 local methodology: registry snapshot boundary",
+      "issue_code": "registry_snapshot_missing",
+      "notes": "XEW consumes only local registry snapshots for P008. Missing, ambiguous, invalid, or absent registry rows must be reported explicitly and must never trigger a live provider lookup or guessed FIGI.",
+      "pattern_id": "XEW-P008",
+      "retrieved_at": "2026-06-09T00:00:00Z",
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "source": "OTHER",
+      "title": "CMD+RVL XEW-P008 registry snapshot consumer contract"
+    },
+    {
       "citations": [
         {
           "citation": "Section 4.7.1 - Fact Reporting",

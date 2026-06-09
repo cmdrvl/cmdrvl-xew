@@ -66,8 +66,27 @@ cmdrvl-xew pack \
 ```
 
 Optional (when applicable):
-- `--issuer-name`, `--period-end`, `--arelle-version`, `--resolution-mode`, `--p001-conflict-mode`, `--derive-artifact-urls`
+- `--issuer-name`, `--period-end`, `--arelle-version`, `--resolution-mode`, `--p001-conflict-mode`, `--p008-registry-snapshot`, `--p008-require-registry`, `--derive-artifact-urls`
 - History window and comparator arguments (see section 2)
+
+For XEW-P008 Instrument Identity Collapse, pass a local canon/OpenFIGI snapshot:
+
+```bash
+cmdrvl-xew pack \
+  --pack-id XEW-EP-P008-MSFT \
+  --out /tmp/XEW-EP-P008-MSFT \
+  --primary /path/to/msft-primary.html \
+  --cik 0000789019 \
+  --accession 0001193125-26-191507 \
+  --form 10-Q \
+  --filed-date 2026-04-24 \
+  --primary-document-url https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm \
+  --retrieved-at 2026-06-09T00:00:00Z \
+  --p008-registry-snapshot /path/to/p008-openfigi-snapshot.json \
+  --p008-require-registry
+```
+
+The Microsoft-style deterministic fixture used by the test suite expects one collapse group for `MSFT`/`Nasdaq` with common stock, `3.125% Notes due 2028`, and `2.625% Notes due 2033`; the registry snapshot fixture resolves them to `BBG000BPH459`, `BBG005NPW5Z2`, and `BBG004HDR2M6`.
 
 ## 5) Verify the pack
 
@@ -86,6 +105,7 @@ Key files in the pack:
 - `toolchain/toolchain.json` (reproducibility config, marker thresholds, history window, comparator selection)
 - `reproduction_steps.json` (built-in step list)
 - `artifacts/` (bytes used for detection)
+- `generated/instrument_identity_collapse.v1.json` (present when XEW-P008 emits collapse evidence)
 
 Basic inspection:
 ```bash
@@ -106,6 +126,8 @@ Note: toolchain system info may differ across machines. To compare bytes, re-run
 - If findings are empty and you expect detections, ensure Arelle is installed and the primary HTML is valid iXBRL.
 - If `verify-pack --validate-schema` fails, install the `jsonschema` extra and re-run.
 - If external taxonomy inputs are not bundled, check `toolchain/toolchain.json` for non-redistributable references and fetch those inputs using the recorded URLs and sha256.
+- If P008 emits `registry_snapshot_missing`, rerun with `--p008-registry-snapshot`; if strict proof is required, also pass `--p008-require-registry`.
+- If P008 emits `registry_snapshot_ambiguous`, fix the local snapshot producer or narrow the corpus snapshot before treating FIGI enrichment as resolved.
 
 ## References
 

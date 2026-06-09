@@ -1,7 +1,7 @@
 """Detector registry for XEW pattern detection."""
 
 import logging
-from typing import Dict, List, Type, Set, Any, Optional, Union, Tuple
+from typing import Dict, List, Type, Set, Any, Optional, Tuple
 from pathlib import Path
 import importlib
 import json
@@ -18,6 +18,7 @@ PATTERN_PRIORITIES = {
     "XEW-P004": 2,  # Type/unit/numeric violations - high priority (validation critical)
     "XEW-P005": 3,  # Taxonomy inconsistencies - medium priority (structural)
     "XEW-P002": 4,  # Anchoring defects - lower priority (taxonomy quality)
+    "XEW-P008": 5,  # Instrument identity collapse - review-grade identity fragility
 }
 
 
@@ -86,8 +87,7 @@ class DetectorRegistry:
             rule_basis_path: Path to xew_rule_basis_map.v1.json
         """
         try:
-            with open(rule_basis_path, 'r') as f:
-                data = json.load(f)
+            data = json.loads(rule_basis_path.read_text(encoding='utf-8'))
 
             # Index rule basis by pattern_id for efficient lookup
             self._rule_basis_map = {}
@@ -112,8 +112,7 @@ class DetectorRegistry:
             issue_codes_path: Path to xew_issue_codes.v1.json
         """
         try:
-            with open(issue_codes_path, 'r') as f:
-                data = json.load(f)
+            data = json.loads(issue_codes_path.read_text(encoding='utf-8'))
 
             self._issue_codes_map = data.get('patterns', {})
             self.logger.info(f"Loaded issue codes for {len(self._issue_codes_map)} patterns")

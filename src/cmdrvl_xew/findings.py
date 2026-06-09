@@ -170,6 +170,8 @@ class FindingsWriter:
             instance_json["data"] = self._format_p004_data(instance.data)
         elif pattern_id == "XEW-P005":
             instance_json["data"] = self._format_p005_data(instance.data)
+        elif pattern_id == "XEW-P008":
+            instance_json["data"] = self._format_p008_data(instance.data)
         else:
             # Generic data handling for unknown patterns
             instance_json["data"] = instance.data
@@ -385,6 +387,167 @@ class FindingsWriter:
         if "details" in data:
             result["details"] = data["details"]
 
+        return result
+
+    def _format_p008_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Format P008-specific instance data with stable ordering."""
+        result: Dict[str, Any] = {
+            "issue_codes": sorted(str(code) for code in data.get("issue_codes", [])),
+            "collapsed_key": data.get("collapsed_key", {"key": "unknown"}),
+            "member_count": int(data.get("member_count", 0)),
+            "members": [],
+        }
+
+        members = data.get("members", [])
+        if isinstance(members, list):
+            result["members"] = sorted(
+                (self._format_p008_member(member) for member in members if isinstance(member, dict)),
+                key=lambda member: str(member.get("canonical_signature", "")),
+            )
+
+        unsupported = data.get("unsupported_candidates")
+        if isinstance(unsupported, list) and unsupported:
+            result["unsupported_candidates"] = sorted(
+                (self._format_p008_unsupported(item) for item in unsupported if isinstance(item, dict)),
+                key=lambda item: (str(item.get("context_ref", "")), str(item.get("security_title", ""))),
+            )
+
+        if "registry_snapshot" in data and isinstance(data["registry_snapshot"], dict):
+            result["registry_snapshot"] = data["registry_snapshot"]
+
+        repair = data.get("deterministic_repair")
+        if isinstance(repair, list) and repair:
+            result["deterministic_repair"] = sorted(
+                (
+                    {"target": str(item.get("target", "")), "action": str(item.get("action", ""))}
+                    for item in repair
+                    if isinstance(item, dict)
+                ),
+                key=lambda item: (item["target"], item["action"]),
+            )
+
+        diagnostics = data.get("diagnostics")
+        if isinstance(diagnostics, list) and diagnostics:
+            result["diagnostics"] = sorted(
+                (
+                    {
+                        "issue_code": str(item.get("issue_code", "")),
+                        "message": str(item.get("message", "")),
+                    }
+                    for item in diagnostics
+                    if isinstance(item, dict)
+                ),
+                key=lambda item: (item["issue_code"], item["message"]),
+            )
+
+        return result
+
+    def _format_p008_member(self, member: Dict[str, Any]) -> Dict[str, Any]:
+        result: Dict[str, Any] = {}
+        for key in (
+            "context_ref",
+            "security_title",
+            "normalized_title",
+            "instrument_kind",
+            "canonical_signature",
+            "ticker",
+            "exchange",
+            "par_value",
+            "coupon_percent",
+            "maturity_year",
+            "cusip",
+            "isin",
+        ):
+            value = member.get(key)
+            if value is not None and value != "":
+                result[key] = str(value)
+        result["no_trading_symbol"] = bool(member.get("no_trading_symbol", False))
+        registry = member.get("registry")
+        if isinstance(registry, dict):
+            result["registry"] = self._format_p008_registry_lookup(registry)
+        else:
+            result["registry"] = {"status": "snapshot_absent"}
+        facts = member.get("facts", [])
+        result["facts"] = sorted(
+            (self._format_p008_fact(fact) for fact in facts if isinstance(fact, dict)),
+            key=lambda fact: (
+                fact.get("context_ref", ""),
+                fact.get("concept", {}).get("clark", ""),
+                fact.get("value", ""),
+            ),
+        )
+        return result
+
+    def _format_p008_registry_lookup(self, lookup: Dict[str, Any]) -> Dict[str, Any]:
+        result: Dict[str, Any] = {"status": str(lookup.get("status", "snapshot_absent"))}
+        row = lookup.get("row")
+        if isinstance(row, dict):
+            result["row"] = self._format_p008_registry_row(row)
+        candidates = lookup.get("candidates")
+        if isinstance(candidates, list) and candidates:
+            result["candidates"] = sorted(
+                (self._format_p008_registry_row(row) for row in candidates if isinstance(row, dict)),
+                key=lambda row: row.get("figi", ""),
+            )
+        if lookup.get("duplicate_count"):
+            result["duplicate_count"] = int(lookup["duplicate_count"])
+        if lookup.get("diagnostic"):
+            result["diagnostic"] = str(lookup["diagnostic"])
+        return result
+
+    def _format_p008_registry_row(self, row: Dict[str, Any]) -> Dict[str, str]:
+        result: Dict[str, str] = {}
+        for key in (
+            "figi",
+            "ticker",
+            "exchange",
+            "security_title",
+            "normalized_title",
+            "canonical_signature",
+            "cusip",
+            "isin",
+            "composite_figi",
+            "share_class_figi",
+            "market_sector",
+            "security_type",
+            "name",
+        ):
+            value = row.get(key)
+            if value is not None and value != "":
+                result[key] = str(value)
+        return result
+
+    def _format_p008_fact(self, fact: Dict[str, Any]) -> Dict[str, Any]:
+        result = {
+            "concept": fact.get("concept", {"clark": "{http://xbrl.sec.gov/dei/2025}Unknown"}),
+            "context_ref": str(fact.get("context_ref", "")),
+            "value": str(fact.get("value", "")),
+        }
+        source = fact.get("source")
+        if isinstance(source, dict) and source:
+            result["source"] = source
+        return result
+
+    def _format_p008_unsupported(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        result: Dict[str, Any] = {
+            "context_ref": str(item.get("context_ref", "")),
+            "security_title": str(item.get("security_title", "")),
+            "diagnostic": str(item.get("diagnostic", "")),
+        }
+        if item.get("ticker"):
+            result["ticker"] = str(item["ticker"])
+        if item.get("exchange"):
+            result["exchange"] = str(item["exchange"])
+        facts = item.get("facts")
+        if isinstance(facts, list):
+            result["facts"] = sorted(
+                (self._format_p008_fact(fact) for fact in facts if isinstance(fact, dict)),
+                key=lambda fact: (
+                    fact.get("context_ref", ""),
+                    fact.get("concept", {}).get("clark", ""),
+                    fact.get("value", ""),
+                ),
+            )
         return result
 
     def _write_json_deterministically(self, document: Dict[str, Any]) -> None:

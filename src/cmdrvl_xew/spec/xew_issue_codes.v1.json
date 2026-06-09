@@ -35,6 +35,16 @@
         "namespace_schema_ref_mismatch"
       ]
     },
+    "XEW-P008": {
+      "issue_codes": [
+        "weak_identity_collision",
+        "registry_snapshot_missing",
+        "registry_snapshot_ambiguous",
+        "registry_snapshot_invalid",
+        "unsupported_security_title",
+        "detector_group_cap_exceeded"
+      ]
+    },
     "XEW-M002": {
       "issue_codes": [
         "extension_refactor_event"

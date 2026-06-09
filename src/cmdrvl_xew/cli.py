@@ -193,7 +193,7 @@ def validate_pack_args(args: argparse.Namespace) -> list[str]:
             errors.append(f"Primary file does not exist: {args.primary}")
         elif not primary_path.is_file():
             errors.append(f"Primary path is not a file: {args.primary}")
-        elif not primary_path.suffix.lower() in ['.htm', '.html', '.xml']:
+        elif primary_path.suffix.lower() not in ['.htm', '.html', '.xml']:
             errors.append(f"Primary file must be HTML or XML format (got {primary_path.suffix}): {args.primary}")
         else:
             # Try to read the file to verify accessibility
@@ -246,6 +246,16 @@ def validate_pack_args(args: argparse.Namespace) -> list[str]:
     if getattr(args, "require_arelle", False) and getattr(args, "no_arelle", False):
         errors.append("Cannot use both --require-arelle and --no-arelle")
 
+    p008_snapshot = getattr(args, "p008_registry_snapshot", None)
+    p008_required = getattr(args, "p008_require_registry", False)
+    if p008_required and not p008_snapshot:
+        errors.append("--p008-require-registry requires --p008-registry-snapshot")
+    if p008_snapshot:
+        snapshot_path = Path(p008_snapshot)
+        if not snapshot_path.exists():
+            errors.append(f"P008 registry snapshot does not exist: {p008_snapshot}")
+        elif not snapshot_path.is_file():
+            errors.append(f"P008 registry snapshot is not a file: {p008_snapshot}")
 
     # Validate output directory constraints
     try:
@@ -461,6 +471,18 @@ def main(argv: list[str] | None = None) -> int:
             "'rounded' treats rounding-consistent values (per decimals/precision) as non-conflicts (default). "
             "'strict' flags any numeric mismatch as a conflict."
         ),
+    )
+    pack.add_argument(
+        "--p008-registry-snapshot",
+        help=(
+            "Local canon/OpenFIGI registry snapshot JSON for XEW-P008. "
+            "cmdrvl-xew consumes this file only; it never calls OpenFIGI or canon at runtime."
+        ),
+    )
+    pack.add_argument(
+        "--p008-require-registry",
+        action="store_true",
+        help="Fail pack generation when XEW-P008 is enabled but no local registry snapshot is supplied.",
     )
 
     verify = sub.add_parser("verify-pack", help="Verify an Evidence Pack")

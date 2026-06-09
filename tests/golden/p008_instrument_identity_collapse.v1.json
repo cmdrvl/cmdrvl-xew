@@ -1,0 +1,243 @@
+{
+  "collapse_group_count": 1,
+  "collapse_groups": [
+    {
+      "collapsed_key": {
+        "exchange": "NASDAQ",
+        "key": "P008:weak|ticker=MSFT|exchange=NASDAQ",
+        "ticker": "MSFT"
+      },
+      "deterministic_repair": [
+        {
+          "action": "Retain each registered security title as the instrument-level identity discriminator.",
+          "target": "dei:Security12bTitle"
+        },
+        {
+          "action": "Attach the registry FIGI from the local canon/OpenFIGI snapshot when the match is resolved.",
+          "target": "registry_snapshot.figi"
+        }
+      ],
+      "diagnostics": [],
+      "finding_id": "XEW-F-0001193125-26-191507-XEW-P008",
+      "instance_id": "2efa1b338403c6a44afd573eeba434bb0a3f3e74889479f1e352e386df94d097",
+      "issue_codes": [
+        "weak_identity_collision"
+      ],
+      "member_count": 3,
+      "members": [
+        {
+          "canonical_signature": "P008:instrument|context_ref=NOTE-2028|kind=debt_note|title=NOTE 3.125% DUE 2028|par_value=|coupon_percent=3.125|maturity_year=2028|ticker=MSFT|exchange=NASDAQ|no_trading_symbol=false|cusip=|isin=",
+          "context_ref": "note-2028",
+          "coupon_percent": "3.125",
+          "exchange": "NASDAQ",
+          "facts": [
+            {
+              "concept": {
+                "clark": "{http://xbrl.sec.gov/dei/2025}Security12bTitle",
+                "local_name": "Security12bTitle",
+                "namespace": "http://xbrl.sec.gov/dei/2025",
+                "prefixed": "dei:Security12bTitle"
+              },
+              "context_ref": "note-2028",
+              "source": {
+                "extraction": "inline_html"
+              },
+              "value": "3.125% Notes due 2028"
+            },
+            {
+              "concept": {
+                "clark": "{http://xbrl.sec.gov/dei/2025}SecurityExchangeName",
+                "local_name": "SecurityExchangeName",
+                "namespace": "http://xbrl.sec.gov/dei/2025",
+                "prefixed": "dei:SecurityExchangeName"
+              },
+              "context_ref": "note-2028",
+              "source": {
+                "extraction": "inline_html"
+              },
+              "value": "Nasdaq"
+            },
+            {
+              "concept": {
+                "clark": "{http://xbrl.sec.gov/dei/2025}TradingSymbol",
+                "local_name": "TradingSymbol",
+                "namespace": "http://xbrl.sec.gov/dei/2025",
+                "prefixed": "dei:TradingSymbol"
+              },
+              "context_ref": "note-2028",
+              "source": {
+                "extraction": "inline_html"
+              },
+              "value": "MSFT"
+            }
+          ],
+          "instrument_kind": "debt_note",
+          "maturity_year": "2028",
+          "no_trading_symbol": false,
+          "normalized_title": "NOTE 3.125% DUE 2028",
+          "registry": {
+            "row": {
+              "exchange": "NASDAQ",
+              "figi": "BBG005NPW5Z2",
+              "market_sector": "Corp",
+              "name": "MICROSOFT CORP",
+              "normalized_title": "NOTE 3.125% DUE 2028",
+              "security_type": "Corporate Bond",
+              "ticker": "MSFT"
+            },
+            "status": "resolved"
+          },
+          "security_title": "3.125% Notes due 2028",
+          "ticker": "MSFT"
+        },
+        {
+          "canonical_signature": "P008:instrument|context_ref=NOTE-2033|kind=debt_note|title=NOTE 2.625% DUE 2033|par_value=|coupon_percent=2.625|maturity_year=2033|ticker=MSFT|exchange=NASDAQ|no_trading_symbol=false|cusip=|isin=",
+          "context_ref": "note-2033",
+          "coupon_percent": "2.625",
+          "exchange": "NASDAQ",
+          "facts": [
+            {
+              "concept": {
+                "clark": "{http://xbrl.sec.gov/dei/2025}Security12bTitle",
+                "local_name": "Security12bTitle",
+                "namespace": "http://xbrl.sec.gov/dei/2025",
+                "prefixed": "dei:Security12bTitle"
+              },
+              "context_ref": "note-2033",
+              "source": {
+                "extraction": "inline_html"
+              },
+              "value": "2.625% Notes due 2033"
+            },
+            {
+              "concept": {
+                "clark": "{http://xbrl.sec.gov/dei/2025}SecurityExchangeName",
+                "local_name": "SecurityExchangeName",
+                "namespace": "http://xbrl.sec.gov/dei/2025",
+                "prefixed": "dei:SecurityExchangeName"
+              },
+              "context_ref": "note-2033",
+              "source": {
+                "extraction": "inline_html"
+              },
+              "value": "Nasdaq"
+            },
+            {
+              "concept": {
+                "clark": "{http://xbrl.sec.gov/dei/2025}TradingSymbol",
+                "local_name": "TradingSymbol",
+                "namespace": "http://xbrl.sec.gov/dei/2025",
+                "prefixed": "dei:TradingSymbol"
+              },
+              "context_ref": "note-2033",
+              "source": {
+                "extraction": "inline_html"
+              },
+              "value": "MSFT"
+            }
+          ],
+          "instrument_kind": "debt_note",
+          "maturity_year": "2033",
+          "no_trading_symbol": false,
+          "normalized_title": "NOTE 2.625% DUE 2033",
+          "registry": {
+            "row": {
+              "exchange": "NASDAQ",
+              "figi": "BBG004HDR2M6",
+              "market_sector": "Corp",
+              "name": "MICROSOFT CORP",
+              "normalized_title": "NOTE 2.625% DUE 2033",
+              "security_type": "Corporate Bond",
+              "ticker": "MSFT"
+            },
+            "status": "resolved"
+          },
+          "security_title": "2.625% Notes due 2033",
+          "ticker": "MSFT"
+        },
+        {
+          "canonical_signature": "P008:instrument|context_ref=STOCK|kind=common_stock|title=COMMON STOCK PAR 0.00000625|par_value=0.00000625|coupon_percent=|maturity_year=|ticker=MSFT|exchange=NASDAQ|no_trading_symbol=false|cusip=|isin=",
+          "context_ref": "stock",
+          "exchange": "NASDAQ",
+          "facts": [
+            {
+              "concept": {
+                "clark": "{http://xbrl.sec.gov/dei/2025}Security12bTitle",
+                "local_name": "Security12bTitle",
+                "namespace": "http://xbrl.sec.gov/dei/2025",
+                "prefixed": "dei:Security12bTitle"
+              },
+              "context_ref": "stock",
+              "source": {
+                "extraction": "inline_html"
+              },
+              "value": "Common stock, $0.00000625 par value per share"
+            },
+            {
+              "concept": {
+                "clark": "{http://xbrl.sec.gov/dei/2025}SecurityExchangeName",
+                "local_name": "SecurityExchangeName",
+                "namespace": "http://xbrl.sec.gov/dei/2025",
+                "prefixed": "dei:SecurityExchangeName"
+              },
+              "context_ref": "stock",
+              "source": {
+                "extraction": "inline_html"
+              },
+              "value": "Nasdaq"
+            },
+            {
+              "concept": {
+                "clark": "{http://xbrl.sec.gov/dei/2025}TradingSymbol",
+                "local_name": "TradingSymbol",
+                "namespace": "http://xbrl.sec.gov/dei/2025",
+                "prefixed": "dei:TradingSymbol"
+              },
+              "context_ref": "stock",
+              "source": {
+                "extraction": "inline_html"
+              },
+              "value": "MSFT"
+            }
+          ],
+          "instrument_kind": "common_stock",
+          "no_trading_symbol": false,
+          "normalized_title": "COMMON STOCK PAR 0.00000625",
+          "par_value": "0.00000625",
+          "registry": {
+            "row": {
+              "composite_figi": "BBG000BPH459",
+              "exchange": "NASDAQ",
+              "figi": "BBG000BPH459",
+              "market_sector": "Equity",
+              "name": "MICROSOFT CORP",
+              "normalized_title": "COMMON STOCK PAR 0.00000625",
+              "security_type": "Common Stock",
+              "share_class_figi": "BBG001S5TD05",
+              "ticker": "MSFT"
+            },
+            "status": "resolved"
+          },
+          "security_title": "Common stock, $0.00000625 par value per share",
+          "ticker": "MSFT"
+        }
+      ],
+      "registry_snapshot": {
+        "bytes": 1084,
+        "generated_at": "2026-06-09T00:00:00Z",
+        "row_count": 3,
+        "sha256": "4d03c924ef1e10a8afdbbefa82f54e330e82b63a61fc7fdcac76cf39b4cd61c5",
+        "snapshot_id": "p008-msft-demo",
+        "source": {
+          "dataset": "openfigi",
+          "provider": "canon"
+        }
+      },
+      "unsupported_candidates": []
+    }
+  ],
+  "detector_version": "XEW-P008.v1",
+  "generated_at": "2026-06-09T00:00:00Z",
+  "schema_id": "cmdrvl.xew.instrument_identity_collapse",
+  "schema_version": "1.0"
+}

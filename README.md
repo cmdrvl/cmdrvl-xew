@@ -11,7 +11,7 @@ The goal is **deterministic reproduction**: a third party (issuer team, filing v
 cmdrvl-xew uses [Arelle](https://arelle.org) — the open-source XBRL processor — to load and validate inline XBRL filings. Arelle provides the XBRL model (facts, contexts, units, relationships); cmdrvl-xew adds targeted fragility detection and Evidence Pack generation on top.
 
 - **Arelle handles**: iXBRL parsing, DTS resolution, SEC/EFM validation
-- **cmdrvl-xew adds**: pattern detection (XEW-P001–P005), deterministic Evidence Packs, reproducible findings
+- **cmdrvl-xew adds**: pattern detection (XEW-P001–P005, XEW-P008), deterministic Evidence Packs, reproducible findings
 
 This is not a fork or replacement — it's a focused layer that turns Arelle's XBRL model into actionable early-warning output.
 
@@ -36,6 +36,17 @@ XEW is NOT:
 - Schema: `src/cmdrvl_xew/schemas/xew_findings.schema.v1.json`
 - Example: `docs/examples/xew_findings.example.v1.json`
 - V2 schema (future): `src/cmdrvl_xew/schemas/xew_findings.schema.v2.json` adds optional `severity_tier`.
+
+### XEW-P008 Instrument Identity Collapse
+P008 detects filings where multiple registered instruments collapse under the same weak identity facts, usually ticker plus exchange. The detector is fully deterministic:
+
+- it extracts DEI registered-security facts from Arelle when available, with a local iXBRL fallback for test/debug runs,
+- it canonicalizes supported security titles such as common stock and notes due a maturity year,
+- it groups by weak ticker/exchange keys and reports only groups with distinct canonical instrument identities,
+- it optionally enriches evidence from a local canon/OpenFIGI registry snapshot, and
+- it never performs live OpenFIGI, canon, twinning, HTTP, or LLM calls at runtime.
+
+When P008 emits a finding, the Evidence Pack includes `generated/instrument_identity_collapse.v1.json` and hashes it in `pack_manifest.json`. The regression fixture uses the Bloomberg-facing Microsoft-style case: common stock, `3.125% Notes due 2028`, and `2.625% Notes due 2033` all share `MSFT`/`Nasdaq` weak facts while the local registry snapshot resolves separate FIGI-backed identities.
 
 ### Evidence Pack
 An Evidence Pack is a directory that contains:
@@ -138,10 +149,12 @@ Notes:
 - For periodic forms (10-Q/10-K/20-F), providing a comparator enables comparator-based markers; running without one is allowed but those markers may be skipped.
 - Packs are only meaningful when Arelle loads a real XBRL model. For production use, install taxonomy packages and run `cmdrvl-xew doctor`, then use `--require-arelle`.
 - `--p001-conflict-mode` controls how XEW-P001 flags numeric value conflicts: `rounded` (default) tolerates rounding-consistent duplicates; `strict` flags any mismatch.
+- `--p008-registry-snapshot` provides a local canon/OpenFIGI registry snapshot for XEW-P008 Instrument Identity Collapse. XEW consumes this file only; it does not call OpenFIGI, canon, twinning, HTTP, or an LLM at runtime.
+- `--p008-require-registry` makes pack generation fail if P008 is enabled without a local registry snapshot.
 
 Pack flags:
 - Required: `--pack-id`, `--out`, `--primary`, `--cik`, `--accession`, `--form`, `--filed-date`, `--primary-document-url`
-- Optional: `--issuer-name`, `--period-end`, `--retrieved-at`, `--arelle-version`, `--resolution-mode`, `--p001-conflict-mode`, `--require-arelle`, `--no-arelle`, `--arelle-xdg-config-home`, `--derive-artifact-urls`
+- Optional: `--issuer-name`, `--period-end`, `--retrieved-at`, `--arelle-version`, `--resolution-mode`, `--p001-conflict-mode`, `--p008-registry-snapshot`, `--p008-require-registry`, `--require-arelle`, `--no-arelle`, `--arelle-xdg-config-home`, `--derive-artifact-urls`
 - History window (repeatable, all-or-nothing): `--history-accession`, `--history-primary-document-url`, `--history-primary-artifact-path`
 - Comparator (optional, all-or-nothing): `--comparator-accession`, `--comparator-primary-document-url`, `--comparator-primary-artifact-path`
 
@@ -291,12 +304,13 @@ Hosted systems (outside this repo) can provide:
 
 Current status:
 - Evidence Pack writer and verifier are implemented.
-- v1 detectors (P001/P002/P004/P005) are implemented; `pack` loads a real Arelle model by default (install `arelle-release`). Use `--no-arelle` to force the mock model, or `--require-arelle` to fail fast if Arelle cannot be used.
+- v1 detectors (P001/P002/P004/P005/P008) are implemented; `pack` loads a real Arelle model by default (install `arelle-release`). Use `--no-arelle` to force the mock model, or `--require-arelle` to fail fast if Arelle cannot be used.
 
 Next steps (v1):
 - Harden Arelle loading and detector inputs for broader filing coverage.
 - Freeze issue-code enums and pin rule basis per shipped issue code.
 - Add deterministic truncation/capping rules for large instance lists.
+- Build the external canon/OpenFIGI provider that produces P008 registry snapshots once twinning supports the OpenFIGI OpenAPI cleanly.
 
 ## License
 

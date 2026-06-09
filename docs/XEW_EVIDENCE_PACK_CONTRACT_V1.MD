@@ -10,6 +10,7 @@ Alert-eligible canon patterns:
 - `XEW-P004` Invalid or Discouraged Data-Type / Unit / Numeric Attributes
 - `XEW-P005` Inconsistent Taxonomy References (internal inconsistency focus)
 - `XEW-P006` Fee Exhibit Fragility (warning reclassification)
+- `XEW-P008` Instrument Identity Collapse (review-grade identity fragility)
 
 Roadmap (not alert-eligible in v1):
 - `XEW-P003` Inconsistent Dimensional Application
@@ -34,12 +35,15 @@ XEW-EP-<pack_id>/
   xew_findings.json
   artifacts/
     <downloaded EDGAR artifacts...>
+  generated/
+    instrument_identity_collapse.v1.json   # present when XEW-P008 emits collapse evidence
   toolchain/
     toolchain.json
 ```
 
 Notes:
-- `artifacts/` contains the exact byte content used for detection (downloaded from EDGAR and any other public sources required to load/validate the filing).
+- `artifacts/` contains the exact byte content used for detection (downloaded from EDGAR and any other public sources required to load/validate the filing). When P008 uses a local canon/OpenFIGI registry snapshot, the exact snapshot bytes are copied into `artifacts/p008_registry_snapshot.json`.
+- `generated/` contains deterministic XEW-generated evidence artifacts. These files are listed in `pack_manifest.json` and are reproducibility-relevant.
 - `toolchain/toolchain.json` is a small file containing pinned tool versions/config (see below).
 
 ## Required Files
@@ -59,7 +63,7 @@ Required fields:
   - `path`: pack-relative path (e.g., `artifacts/primary.html`)
   - `sha256`: lowercase hex sha256 of raw file bytes
   - `bytes`: integer size in bytes
-  - `role`: one of: `xew_output`, `edgar_artifact`, `taxonomy_input`, `toolchain`, `manifest` (if listed)
+  - `role`: one of: `xew_output`, `edgar_artifact`, `taxonomy_input`, `toolchain`, `manifest` (if listed), `generated`, `other`
   - `source_url`: required for `edgar_artifact` and other fetched inputs
 
 ### 3) `toolchain/toolchain.json`
@@ -72,6 +76,34 @@ Recommended fields (when applicable):
 - `arelle_sec_plugin_version`: version string or git SHA
 - `dqcrt_version`: version string or git SHA
 - `taxonomy_inputs`: list of any taxonomy packages/files used to resolve/validate (each with `source_url` or identifier + `sha256`)
+
+### 4) P008 local registry snapshot
+When `--p008-registry-snapshot` is supplied, XEW copies the exact file to `artifacts/p008_registry_snapshot.json` and records the copied bytes in `pack_manifest.json`.
+
+Required snapshot fields:
+- `schema_id`: use `cmdrvl.canon.openfigi_registry_snapshot`
+- `schema_version`: snapshot contract version string
+- `snapshot_id`: stable snapshot identifier
+- `generated_at`: UTC ISO timestamp from the external producer
+- `source`: object identifying the producer, normally `{"provider": "canon", "dataset": "openfigi"}`
+- `rows`: array of registry rows
+
+P008 consumes these row fields when present:
+- `figi` (required, 12 uppercase alphanumeric characters)
+- `ticker`
+- `exchange`
+- `security_title`
+- `normalized_title`
+- `canonical_signature`
+- `cusip`
+- `isin`
+- `composite_figi`
+- `share_class_figi`
+- `market_sector`
+- `security_type`
+- `name`
+
+XEW validates and consumes this snapshot only. It does not generate the snapshot, call OpenFIGI, call canon/twinning, or perform live enrichment during detection.
 
 ## Hashing Rules (tamper-evident)
 ### Per-file hashes
@@ -121,6 +153,11 @@ Canonical signature rules (v1; ASCII only; use Clark notation for QNames):
   - `sig = "v1|P006|<issue_code>|exhibit_sha256=<sha256(fee_exhibit_bytes)>|sec_error=<sec_error_code>"`
 - `XEW-P007` (duplicate-by-substance context; roadmap/non-alert in v1):
   - `sig = "v1|P007|<entity_scheme>|<entity_identifier>|<period_sig>|<dim_sig>"`
+- `XEW-P008` (instrument identity collapse):
+  - instrument signatures use `P008:instrument|<key=value...>` with context, normalized title fields, ticker, exchange, no-trading-symbol flag, CUSIP, and ISIN.
+  - weak-key signatures use `P008:weak|ticker=<ticker>|exchange=<exchange>`.
+  - collapse instance signatures use `P008|collapse|<weak_key>|<sorted_member_instrument_signatures>`.
+  - `instance_id = sha256(collapse_instance_signature)`.
 
 Where:
 - `sha256(x)`: sha256 over UTF-8 bytes of `x` with no trailing newline, returned as lowercase hex.
@@ -169,6 +206,7 @@ To avoid "it worked on my machine" evidence packs:
 - Record toolchain versions and taxonomy inputs used to build the DTS.
 - Cap noisy instance lists with explicit truncation fields (see schema).
 - Do not emit semantic claims that cannot be derived from artifacts (e.g., "semantically unrelated" anchoring).
+- P008 must not call OpenFIGI, canon, twinning, HTTP, or LLM/model runtimes during detection. Registry evidence must come from a local snapshot copied into the Evidence Pack.
 
 ## Artifact Preparation (flatten)
 

@@ -278,7 +278,7 @@
         "finding_id": { "type": "string", "minLength": 1 },
         "pattern_id": {
           "type": "string",
-          "enum": ["XEW-P001", "XEW-P002", "XEW-P004", "XEW-P005", "XEW-P007"],
+          "enum": ["XEW-P001", "XEW-P002", "XEW-P004", "XEW-P005", "XEW-P007", "XEW-P008"],
           "description": "V1 shipping pattern IDs. P003 and P006 are roadmap only."
         },
         "pattern_name": { "type": "string", "minLength": 1 },
@@ -338,7 +338,8 @@
             "extension_anchoring_issue",
             "fact_numeric_typing_issue",
             "taxonomy_reference_issue",
-            "duplicate_context_signature"
+            "duplicate_context_signature",
+            "instrument_identity_collapse"
           ]
         },
         "primary": { "type": "boolean" },
@@ -367,6 +368,10 @@
         {
           "if": { "properties": { "kind": { "const": "duplicate_context_signature" } } },
           "then": { "properties": { "data": { "$ref": "#/$defs/p007_duplicate_context_signature" } } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "instrument_identity_collapse" } } },
+          "then": { "properties": { "data": { "$ref": "#/$defs/p008_instrument_identity_collapse" } } }
         }
       ]
     },
@@ -507,6 +512,176 @@
           "type": "integer",
           "minimum": 1,
           "description": "Number of facts referencing any of these contexts (to avoid dead-code contexts)."
+        }
+      }
+    },
+    "p008_instrument_identity_collapse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["issue_codes", "collapsed_key", "member_count", "members"],
+      "properties": {
+        "issue_codes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "enum": [
+              "weak_identity_collision",
+              "registry_snapshot_missing",
+              "registry_snapshot_ambiguous",
+              "registry_snapshot_invalid",
+              "unsupported_security_title",
+              "detector_group_cap_exceeded"
+            ]
+          }
+        },
+        "collapsed_key": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["key"],
+          "properties": {
+            "key": { "type": "string", "minLength": 1 },
+            "ticker": { "type": "string" },
+            "exchange": { "type": "string" }
+          }
+        },
+        "member_count": { "type": "integer", "minimum": 0 },
+        "members": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/p008_member" }
+        },
+        "unsupported_candidates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["context_ref", "security_title", "diagnostic"],
+            "properties": {
+              "context_ref": { "type": "string", "minLength": 1 },
+              "security_title": { "type": "string" },
+              "ticker": { "type": "string" },
+              "exchange": { "type": "string" },
+              "diagnostic": { "type": "string", "minLength": 1 },
+              "facts": { "type": "array", "items": { "$ref": "#/$defs/p008_fact_evidence" } }
+            }
+          }
+        },
+        "registry_snapshot": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "deterministic_repair": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["target", "action"],
+            "properties": {
+              "target": { "type": "string", "minLength": 1 },
+              "action": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["issue_code", "message"],
+            "properties": {
+              "issue_code": { "type": "string", "minLength": 1 },
+              "message": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "p008_member": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "context_ref",
+        "security_title",
+        "normalized_title",
+        "instrument_kind",
+        "canonical_signature",
+        "ticker",
+        "exchange",
+        "no_trading_symbol",
+        "registry",
+        "facts"
+      ],
+      "properties": {
+        "context_ref": { "type": "string", "minLength": 1 },
+        "security_title": { "type": "string", "minLength": 1 },
+        "normalized_title": { "type": "string", "minLength": 1 },
+        "instrument_kind": { "type": "string", "enum": ["common_stock", "debt_note"] },
+        "canonical_signature": { "type": "string", "minLength": 1 },
+        "ticker": { "type": "string" },
+        "exchange": { "type": "string" },
+        "no_trading_symbol": { "type": "boolean" },
+        "par_value": { "type": "string" },
+        "coupon_percent": { "type": "string" },
+        "maturity_year": { "type": "string", "pattern": "^\\d{4}$" },
+        "cusip": { "type": "string" },
+        "isin": { "type": "string" },
+        "registry": { "$ref": "#/$defs/p008_registry_lookup" },
+        "facts": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/p008_fact_evidence" }
+        }
+      }
+    },
+    "p008_registry_lookup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["resolved", "missing", "ambiguous", "duplicate_identical", "snapshot_absent", "snapshot_invalid"]
+        },
+        "row": { "$ref": "#/$defs/p008_registry_row" },
+        "candidates": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/p008_registry_row" }
+        },
+        "duplicate_count": { "type": "integer", "minimum": 0 },
+        "diagnostic": { "type": "string" }
+      }
+    },
+    "p008_registry_row": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["figi", "ticker", "exchange"],
+      "properties": {
+        "figi": { "type": "string", "pattern": "^[A-Z0-9]{12}$" },
+        "ticker": { "type": "string" },
+        "exchange": { "type": "string" },
+        "security_title": { "type": "string" },
+        "normalized_title": { "type": "string" },
+        "canonical_signature": { "type": "string" },
+        "cusip": { "type": "string" },
+        "isin": { "type": "string" },
+        "composite_figi": { "type": "string" },
+        "share_class_figi": { "type": "string" },
+        "market_sector": { "type": "string" },
+        "security_type": { "type": "string" },
+        "name": { "type": "string" }
+      }
+    },
+    "p008_fact_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["concept", "context_ref", "value"],
+      "properties": {
+        "concept": { "$ref": "#/$defs/qname" },
+        "context_ref": { "type": "string", "minLength": 1 },
+        "value": { "type": "string" },
+        "source": {
+          "type": "object",
+          "additionalProperties": true
         }
       }
     }

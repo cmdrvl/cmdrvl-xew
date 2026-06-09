@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import logging
 import mimetypes
 import os
 import re
@@ -47,6 +48,7 @@ from .markers import (
 
 _ACCESSION_RE = re.compile(r"^\d{10}-\d{2}-\d{6}$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+logger = logging.getLogger(__name__)
 
 
 def _compute_pack_sha256(files: list[FileHash]) -> str:
@@ -114,7 +116,7 @@ def _generate_repro_steps(pack_id: str, cik: str, accession: str, form: str,
         f"--form={form}",
         f"--filed-date={filed_date}",
         f"--primary={primary_artifact_path}",
-        f"--primary-document-url=<URL_TO_PRIMARY_DOCUMENT>"
+        "--primary-document-url=<URL_TO_PRIMARY_DOCUMENT>"
     ]
 
     repro_steps = {
@@ -287,7 +289,7 @@ def _load_xbrl_model_with_arelle(
         except Exception:
             # If taxonomy package loading fails, continue; Arelle will fall back
             # to its web cache / direct URL resolution depending on offline mode.
-            pass
+            logger.debug("Arelle taxonomy package remapping rebuild failed.", exc_info=True)
 
         mode = (resolution_mode or "offline_preferred").strip().lower()
 
@@ -371,6 +373,7 @@ def _run_xew_detection(primary_path: Path, artifacts_dir: Path, context_metadata
         "enable_all_patterns": True,
         "gate_enforcement": True,
         "p001_conflict_mode": context_metadata.get("p001_conflict_mode") or "rounded",
+        "p008_registry_snapshot": context_metadata.get("p008_registry_snapshot") or "",
     }
 
     # Include comparator selection data for marker detectors
@@ -815,6 +818,86 @@ def _compute_markers(
     return markers
 
 
+def _write_p008_generated_artifacts(
+    *,
+    out_dir: Path,
+    findings: list,
+    generated_at: str,
+) -> list[ArtifactHash]:
+    collapse_findings = [
+        finding for finding in findings
+        if getattr(finding, "pattern_id", "") == "XEW-P008"
+    ]
+    if not collapse_findings:
+        return []
+
+    groups: list[dict[str, object]] = []
+    for finding in sorted(collapse_findings, key=lambda item: getattr(item, "finding_id", "")):
+        for instance in sorted(getattr(finding, "instances", []) or [], key=lambda item: getattr(item, "instance_id", "")):
+            if getattr(instance, "kind", "") != "instrument_identity_collapse":
+                continue
+            data = getattr(instance, "data", {}) or {}
+            groups.append(
+                {
+                    "finding_id": getattr(finding, "finding_id", ""),
+                    "instance_id": getattr(instance, "instance_id", ""),
+                    "collapsed_key": data.get("collapsed_key", {}),
+                    "issue_codes": sorted(data.get("issue_codes", [])),
+                    "member_count": data.get("member_count", 0),
+                    "members": sorted(
+                        data.get("members", []),
+                        key=lambda member: str(member.get("canonical_signature", "")) if isinstance(member, dict) else "",
+                    ),
+                    "unsupported_candidates": sorted(
+                        data.get("unsupported_candidates", []),
+                        key=lambda item: (
+                            str(item.get("context_ref", "")) if isinstance(item, dict) else "",
+                            str(item.get("security_title", "")) if isinstance(item, dict) else "",
+                        ),
+                    ),
+                    "registry_snapshot": data.get("registry_snapshot", {}),
+                    "deterministic_repair": sorted(
+                        data.get("deterministic_repair", []),
+                        key=lambda item: (
+                            str(item.get("target", "")) if isinstance(item, dict) else "",
+                            str(item.get("action", "")) if isinstance(item, dict) else "",
+                        ),
+                    ),
+                    "diagnostics": sorted(
+                        data.get("diagnostics", []),
+                        key=lambda item: (
+                            str(item.get("issue_code", "")) if isinstance(item, dict) else "",
+                            str(item.get("message", "")) if isinstance(item, dict) else "",
+                        ),
+                    ),
+                }
+            )
+
+    if not groups:
+        return []
+
+    rel_path = Path("generated") / "instrument_identity_collapse.v1.json"
+    abs_path = out_dir / rel_path
+    document = {
+        "schema_id": "cmdrvl.xew.instrument_identity_collapse",
+        "schema_version": "1.0",
+        "detector_version": "XEW-P008.v1",
+        "generated_at": generated_at,
+        "collapse_group_count": len(groups),
+        "collapse_groups": groups,
+    }
+    write_json(abs_path, document)
+    sha, size = sha256_file(abs_path)
+    return [
+        ArtifactHash(
+            path=rel_path.as_posix(),
+            role="generated",
+            sha256=sha,
+            bytes=size,
+        )
+    ]
+
+
 def _validate_pack_args(args: argparse.Namespace) -> None:
     """Validate all required pack command arguments with clear error messages."""
     errors = []
@@ -886,6 +969,17 @@ def _validate_pack_args(args: argparse.Namespace) -> None:
     elif not primary_path.is_file():
         validation_errors.append(f"--primary: Path is not a file: {args.primary}")
 
+    p008_snapshot = getattr(args, "p008_registry_snapshot", None)
+    p008_required = bool(getattr(args, "p008_require_registry", False))
+    if p008_required and not p008_snapshot:
+        validation_errors.append("--p008-require-registry requires --p008-registry-snapshot")
+    if p008_snapshot:
+        snapshot_path = Path(p008_snapshot)
+        if not snapshot_path.exists():
+            validation_errors.append(f"--p008-registry-snapshot: File does not exist: {p008_snapshot}")
+        elif not snapshot_path.is_file():
+            validation_errors.append(f"--p008-registry-snapshot: Path is not a file: {p008_snapshot}")
+
     # Validate URL formats (basic check)
     if args.primary_document_url and not args.primary_document_url.strip():
         validation_errors.append("--primary-document-url cannot be empty")
@@ -917,7 +1011,7 @@ def run_pack(args: argparse.Namespace) -> int:
 
     # Use standardized Evidence Pack directory layout
     layout = compute_pack_layout(args.pack_id)
-    pack_structure = create_pack_directory_structure(out_dir, layout)
+    create_pack_directory_structure(out_dir, layout)
 
     retrieved_at = args.retrieved_at or utc_now_iso()
     generated_at = retrieved_at
@@ -991,6 +1085,29 @@ def run_pack(args: argparse.Namespace) -> int:
                 bytes=artifact.bytes,
             )
         )
+
+    p008_registry_snapshot_path = None
+    p008_snapshot_arg = getattr(args, "p008_registry_snapshot", None)
+    if p008_snapshot_arg:
+        snapshot_src = Path(p008_snapshot_arg).resolve()
+        snapshot_dst_rel = Path("artifacts") / "p008_registry_snapshot.json"
+        snapshot_dst_rel_str = snapshot_dst_rel.as_posix()
+        if snapshot_dst_rel_str in seen_paths:
+            exit_processing_error(f"Artifact path collision in pack: {snapshot_dst_rel_str}")
+        seen_paths.add(snapshot_dst_rel_str)
+        snapshot_dst_abs = out_dir / snapshot_dst_rel
+        snapshot_dst_abs.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(snapshot_src, snapshot_dst_abs)
+        snapshot_sha, snapshot_bytes = sha256_file(snapshot_dst_abs)
+        pack_artifacts.append(
+            ArtifactHash(
+                path=snapshot_dst_rel_str,
+                role="other",
+                sha256=snapshot_sha,
+                bytes=snapshot_bytes,
+            )
+        )
+        p008_registry_snapshot_path = str(snapshot_dst_abs)
 
     comparator_primary_dst_rel = None
     if args.comparator_accession:
@@ -1174,6 +1291,8 @@ def run_pack(args: argparse.Namespace) -> int:
     findings_toolchain_config = {
         "resolution_mode": args.resolution_mode,
         "p001_conflict_mode": p001_conflict_mode,
+        "p008_registry_snapshot": bool(p008_registry_snapshot_path),
+        "p008_require_registry": bool(getattr(args, "p008_require_registry", False)),
     }
 
     findings_toolchain_obj = toolchain_recorder.record_toolchain(findings_toolchain_config)
@@ -1356,6 +1475,7 @@ def run_pack(args: argparse.Namespace) -> int:
                 "require_arelle": bool(getattr(args, "require_arelle", False)),
                 "disable_arelle": bool(getattr(args, "no_arelle", False)),
                 "arelle_xdg_config_home": getattr(args, "arelle_xdg_config_home", None),
+                "p008_registry_snapshot": p008_registry_snapshot_path or "",
                 "comparator_selection": {
                     "selected_comparator": selection_result.selected_comparator,
                     "history_window": selection_result.history_window,
@@ -1390,6 +1510,24 @@ def run_pack(args: argparse.Namespace) -> int:
         out_dir=out_dir,
     )
 
+    generated_artifacts = _write_p008_generated_artifacts(
+        out_dir=out_dir,
+        findings=xbrl_findings,
+        generated_at=retrieved_at,
+    )
+    for generated in generated_artifacts:
+        content_type, _ = mimetypes.guess_type(generated.path)
+        findings_artifacts.append(
+            {
+                "path": generated.path,
+                "role": "generated",
+                "retrieved_at": retrieved_at,
+                "sha256": generated.sha256,
+                "bytes": generated.bytes,
+                "content_type": content_type or "application/json",
+            }
+        )
+
     # Use FindingsWriter for deterministic output
     findings_writer = FindingsWriter(out_dir / findings_path_rel)
 
@@ -1397,7 +1535,7 @@ def run_pack(args: argparse.Namespace) -> int:
     findings_writer.write_findings(
         findings=xbrl_findings,
         context=detection_context,
-        artifacts=findings_artifacts,
+        artifacts=sorted(findings_artifacts, key=lambda item: str(item.get("path", ""))),
         toolchain=findings_toolchain_obj,
         input_metadata=input_obj,
         ext_metadata=ext_metadata,
@@ -1415,9 +1553,16 @@ def run_pack(args: argparse.Namespace) -> int:
         source_url = source_url_map.get(artifact.path)
         manifest_builder.add_file(
             path=artifact.path,
-            role="edgar_artifact",
+            role=artifact.role,
             file_path=abs_path,
             source_url=source_url
+        )
+
+    for artifact in generated_artifacts:
+        manifest_builder.add_file(
+            path=artifact.path,
+            role="xew_output",
+            file_path=out_dir / artifact.path,
         )
 
     # Add generated files to manifest
@@ -1473,7 +1618,7 @@ def run_pack(args: argparse.Namespace) -> int:
         if callable(close_model):
             close_model()
     except Exception:
-        pass
+        logger.debug("Arelle model cleanup failed.", exc_info=True)
 
     return ExitCode.SUCCESS
 
