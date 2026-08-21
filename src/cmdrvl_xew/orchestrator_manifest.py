@@ -1,4 +1,4 @@
-"""Normalize orchestrator filing-list responses into P008 corpus manifests."""
+"""Normalize Loom filing-list responses into P008 corpus manifests."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from .util import utc_now_iso, write_json
 
 
 class OrchestratorManifestError(ValueError):
-    """Raised when orchestrator output cannot be normalized."""
+    """Raised when Loom output cannot be normalized."""
 
 
 def run_p008_manifest_from_orchestrator(args: argparse.Namespace) -> int:
@@ -27,7 +27,7 @@ def run_p008_manifest_from_orchestrator(args: argparse.Namespace) -> int:
                 "tenant": args.tenant,
                 "query": args.query,
                 "out": args.out,
-                "will_query_orchestrator": False,
+                "will_query_loom": False,
             }
             print(json.dumps(plan, indent=2, sort_keys=True))
             return ExitCode.SUCCESS
@@ -71,7 +71,7 @@ def manifest_from_orchestrator(
     else:
         raw_payload, raw_text = _query_orchestrator(query, tenant=tenant, cmdrvl_project=cmdrvl_project)
         raw_hash = hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
-        response_source = "cmdrvl-cli orchestrator query"
+        response_source = "cmdrvl-cli loom ask"
 
     content = _extract_content(raw_payload)
     rows = _extract_rows(content)
@@ -134,26 +134,26 @@ def _query_orchestrator(query: str, *, tenant: str, cmdrvl_project: Path | None)
         str(project),
         "cmdrvl",
         "--json",
-        "orchestrator",
-        "query",
-        "--tenant",
+        "loom",
+        "ask",
+        "--instance",
         tenant,
         query,
     ]
     try:
         proc = subprocess.run(cmd, check=True, text=True, capture_output=True, timeout=120)
     except FileNotFoundError as exc:
-        raise OrchestratorManifestError("uv command not found; cannot query orchestrator") from exc
+        raise OrchestratorManifestError("uv command not found; cannot query Loom") from exc
     except subprocess.CalledProcessError as exc:
         stderr = (exc.stderr or "").strip()
         detail = f": {stderr}" if stderr else ""
-        raise OrchestratorManifestError(f"orchestrator query failed{detail}") from exc
+        raise OrchestratorManifestError(f"Loom query failed{detail}") from exc
     try:
         payload = json.loads(proc.stdout)
     except Exception as exc:
-        raise OrchestratorManifestError(f"orchestrator returned invalid JSON: {exc}") from exc
+        raise OrchestratorManifestError(f"Loom returned invalid JSON: {exc}") from exc
     if not isinstance(payload, dict):
-        raise OrchestratorManifestError("orchestrator returned non-object JSON")
+        raise OrchestratorManifestError("Loom returned non-object JSON")
     return payload, proc.stdout
 
 
@@ -180,7 +180,7 @@ def _extract_rows(content: Any) -> list[dict[str, Any]]:
             if isinstance(value, list):
                 return [row for row in value if isinstance(row, dict)]
         return [content]
-    raise OrchestratorManifestError("orchestrator content does not contain structured filing rows")
+    raise OrchestratorManifestError("Loom content does not contain structured filing rows")
 
 
 def _normalize_row(row: dict[str, Any]) -> dict[str, str]:

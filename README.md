@@ -251,11 +251,11 @@ The command never calls SEC or OpenFIGI. It reads cached S3 filing bytes, consum
 
 ### Build A Deterministic Candidate Shortlist
 
-Use the orchestrator only to create a local filing manifest. After the manifest exists, scanning and pack generation consume local files/cached S3 only.
+Use Loom only to create a local filing manifest. After the manifest exists, scanning and pack generation consume local files/cached S3 only.
 
 ```bash
-cmdrvl-xew p008 manifest-from-orchestrator \
-  --tenant salt \
+cmdrvl-xew p008 manifest-from-loom \
+  --instance salt \
   --query "recent Microsoft 10-Q filings with registered debt securities" \
   --out /tmp/p008-corpus.jsonl
 ```
@@ -282,7 +282,7 @@ cmdrvl-xew p008 scan-corpus \
 
 The scanner emits stable JSONL and CSV summaries ranked by resolved or ambiguous P008 member count, max collapse group size, distinct instrument-kind count, newest filed date, and accession.
 
-For temporal identity drift (XEW-P009), start from a provider-neutral corpus manifest plus normalized observations. The scanner groups observations by scope and time, applies the P009 ledger/alias-graph rules, ranks fragile scopes, and emits seed identifiers for local canon/OpenFIGI registry materialization. It never calls SEC, OpenFIGI, canon, an orchestrator, a warehouse, HTTP, or an LLM.
+For temporal identity drift (XEW-P009), start from a provider-neutral corpus manifest plus normalized observations. The scanner groups observations by scope and time, applies the P009 ledger/alias-graph rules, ranks fragile scopes, and emits seed identifiers for local canon/OpenFIGI registry materialization. It never calls SEC, OpenFIGI, canon, Loom, a warehouse, HTTP, or an LLM.
 
 ```bash
 cmdrvl-xew p009 scan-corpus \
@@ -303,7 +303,7 @@ If `--registry-snapshot` is omitted, P009 still scans deterministically and repo
 
 For the end-to-end identity-fragility workflow used by CMD+RVL skills, use
 `prove-identity-drift`. The skill or upstream infrastructure is responsible for
-asking orchestrator, materializing cached artifacts, and writing the
+asking Loom, materializing cached artifacts, and writing the
 provider-neutral manifest/observations. XEW then consumes only those local files:
 
 ```bash

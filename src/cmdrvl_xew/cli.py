@@ -683,15 +683,25 @@ def main(argv: list[str] | None = None) -> int:
     p008_scan.add_argument("--continue-on-error", action="store_true")
     p008_scan.add_argument("--fail-fast", action="store_true")
     p008_manifest = p008_sub.add_parser(
-        "manifest-from-orchestrator",
-        help="Normalize a cmdrvl-cli orchestrator filing-list response into a P008 corpus manifest",
+        "manifest-from-loom",
+        help="Normalize a cmdrvl-cli Loom filing-list response into a P008 corpus manifest",
     )
     p008_manifest.add_argument("--query", required=True)
-    p008_manifest.add_argument("--tenant", default="salt")
+    p008_manifest.add_argument("--instance", "--tenant", dest="tenant", default="salt")
     p008_manifest.add_argument("--out", required=True)
-    p008_manifest.add_argument("--response-json", help="Use a saved orchestrator JSON response instead of querying")
-    p008_manifest.add_argument("--cmdrvl-project", help="cmdrvl-cli project path for live orchestrator queries")
+    p008_manifest.add_argument("--response-json", help="Use a saved Loom JSON response instead of querying")
+    p008_manifest.add_argument("--cmdrvl-project", help="cmdrvl-cli project path for live Loom queries")
     p008_manifest.add_argument("--dry-run", action="store_true")
+    p008_manifest_alias = p008_sub.add_parser(
+        "manifest-from-orchestrator",
+        help="Deprecated alias for manifest-from-loom",
+    )
+    p008_manifest_alias.add_argument("--query", required=True)
+    p008_manifest_alias.add_argument("--instance", "--tenant", dest="tenant", default="salt")
+    p008_manifest_alias.add_argument("--out", required=True)
+    p008_manifest_alias.add_argument("--response-json", help="Use a saved Loom JSON response instead of querying")
+    p008_manifest_alias.add_argument("--cmdrvl-project", help="cmdrvl-cli project path for live Loom queries")
+    p008_manifest_alias.add_argument("--dry-run", action="store_true")
 
     p009 = sub.add_parser("p009", help="Manage XEW-P009 helper artifacts")
     p009_sub = p009.add_subparsers(dest="p009_cmd", required=True)
@@ -777,7 +787,7 @@ def main(argv: list[str] | None = None) -> int:
             return run_p008_identity_fragility(args)
         if args.p008_cmd == "scan-corpus":
             return run_p008_scan_corpus(args)
-        if args.p008_cmd == "manifest-from-orchestrator":
+        if args.p008_cmd in {"manifest-from-loom", "manifest-from-orchestrator"}:
             return run_p008_manifest_from_orchestrator(args)
         p.error(f"unknown p008 command: {args.p008_cmd}")
     if args.cmd == "p009":
