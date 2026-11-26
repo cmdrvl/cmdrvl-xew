@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic filing that runs XEW-P008 end to end on facts Arelle transforms.
+     Two instruments share the ticker XEWT on "NYSE American", whose SEC code is NYSEAMER.
+     XEW-P008 must keep seeing the displayed text. The extra contexts hold the other exchange
+     names whose code differs from their text. -->
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:ix="http://www.xbrl.org/2013/inlineXBRL"
+      xmlns:ixt-sec="http://www.sec.gov/inlineXBRL/transformation/2015-08-31"
+      xmlns:xbrli="http://www.xbrl.org/2003/instance"
+      xmlns:link="http://www.xbrl.org/2003/linkbase"
+      xmlns:xlink="http://www.w3.org/1999/xlink"
+      xmlns:s="http://example.com/sec"
+      xml:lang="en-US">
+<head><title>p008</title></head>
+<body>
+<div style="display:none">
+<ix:header>
+<ix:references><link:schemaRef xlink:type="simple" xlink:href="sec.xsd"/></ix:references>
+<ix:resources>
+<xbrli:context id="stock">
+<xbrli:entity><xbrli:identifier scheme="http://example.com/id">E1</xbrli:identifier></xbrli:entity>
+<xbrli:period><xbrli:startDate>2025-01-01</xbrli:startDate><xbrli:endDate>2025-12-31</xbrli:endDate></xbrli:period>
+</xbrli:context>
+<xbrli:context id="note">
+<xbrli:entity><xbrli:identifier scheme="http://example.com/id">E2</xbrli:identifier></xbrli:entity>
+<xbrli:period><xbrli:startDate>2025-01-01</xbrli:startDate><xbrli:endDate>2025-12-31</xbrli:endDate></xbrli:period>
+</xbrli:context>
+<xbrli:context id="arca">
+<xbrli:entity><xbrli:identifier scheme="http://example.com/id">E3</xbrli:identifier></xbrli:entity>
+<xbrli:period><xbrli:startDate>2025-01-01</xbrli:startDate><xbrli:endDate>2025-12-31</xbrli:endDate></xbrli:period>
+</xbrli:context>
+<xbrli:context id="national">
+<xbrli:entity><xbrli:identifier scheme="http://example.com/id">E4</xbrli:identifier></xbrli:entity>
+<xbrli:period><xbrli:startDate>2025-01-01</xbrli:startDate><xbrli:endDate>2025-12-31</xbrli:endDate></xbrli:period>
+</xbrli:context>
+<xbrli:context id="bzx">
+<xbrli:entity><xbrli:identifier scheme="http://example.com/id">E5</xbrli:identifier></xbrli:entity>
+<xbrli:period><xbrli:startDate>2025-01-01</xbrli:startDate><xbrli:endDate>2025-12-31</xbrli:endDate></xbrli:period>
+</xbrli:context>
+<xbrli:context id="chicago">
+<xbrli:entity><xbrli:identifier scheme="http://example.com/id">E6</xbrli:identifier></xbrli:entity>
+<xbrli:period><xbrli:startDate>2025-01-01</xbrli:startDate><xbrli:endDate>2025-12-31</xbrli:endDate></xbrli:period>
+</xbrli:context>
+<xbrli:context id="iex">
+<xbrli:entity><xbrli:identifier scheme="http://example.com/id">E7</xbrli:identifier></xbrli:entity>
+<xbrli:period><xbrli:startDate>2025-01-01</xbrli:startDate><xbrli:endDate>2025-12-31</xbrli:endDate></xbrli:period>
+</xbrli:context>
+</ix:resources>
+</ix:header>
+</div>
+<p><ix:nonNumeric name="s:Security12bTitle" id="t1" contextRef="stock">Common stock, $0.01 par value per share</ix:nonNumeric></p>
+<p><ix:nonNumeric name="s:TradingSymbol" id="k1" contextRef="stock">XEWT</ix:nonNumeric></p>
+<p><ix:nonNumeric name="s:SecurityExchangeName" id="e1" contextRef="stock" format="ixt-sec:exchnameen">NYSE American</ix:nonNumeric></p>
+
+<p><ix:nonNumeric name="s:Security12bTitle" id="t2" contextRef="note">3.125% Notes due 2028</ix:nonNumeric></p>
+<p><ix:nonNumeric name="s:TradingSymbol" id="k2" contextRef="note">XEWT</ix:nonNumeric></p>
+<p><ix:nonNumeric name="s:SecurityExchangeName" id="e2" contextRef="note" format="ixt-sec:exchnameen">NYSE American</ix:nonNumeric></p>
+
+<p><ix:nonNumeric name="s:SecurityExchangeName" id="e3" contextRef="arca" format="ixt-sec:exchnameen">NYSE Arca</ix:nonNumeric></p>
+<p><ix:nonNumeric name="s:SecurityExchangeName" id="e4" contextRef="national" format="ixt-sec:exchnameen">NYSE National</ix:nonNumeric></p>
+<p><ix:nonNumeric name="s:SecurityExchangeName" id="e5" contextRef="bzx" format="ixt-sec:exchnameen">Cboe BZX Exchange</ix:nonNumeric></p>
+<p><ix:nonNumeric name="s:SecurityExchangeName" id="e6" contextRef="chicago" format="ixt-sec:exchnameen">Chicago Stock Exchange</ix:nonNumeric></p>
+<p><ix:nonNumeric name="s:SecurityExchangeName" id="e7" contextRef="iex" format="ixt-sec:exchnameen">Investors Exchange</ix:nonNumeric></p>
+</body>
+</html>

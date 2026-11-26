@@ -141,7 +141,7 @@ class TestSyntheticExport(LocatorAssertions):
         in_source = [
             "hidden-note", "scaled", "negative", "percent", "dash", "nil-amount", "empty-note",
             "huge-integer", "long-fraction", "huge-scaled", "widest", "scaled-again", "section",
-            "nested", "escaped", "sec-transform",
+            "nested", "escaped", "unknown-transform",
         ]
         self.assertEqual(list(self.rows), in_source)
         self.assertEqual([self.rows[i]["fact_ordinal"] for i in in_source], list(range(1, 17)))
@@ -208,9 +208,9 @@ class TestSyntheticExport(LocatorAssertions):
         self.assertFalse(section["in_ix_hidden"])
 
     def test_unshipped_transform_has_no_value_but_keeps_the_source(self):
-        self.assert_value("sec-transform", "transform_unavailable", None, None, "not_numeric")
-        row = self.rows["sec-transform"]
-        self.assertEqual((row["source_text"], row["format"]), ("Maryland", "ixt-sec:stateprovnameen"))
+        self.assert_value("unknown-transform", "transform_unavailable", None, None, "not_numeric")
+        row = self.rows["unknown-transform"]
+        self.assertEqual((row["source_text"], row["format"]), ("Maryland", "zz:mystery"))
         self.assertEqual(self.manifest["value_status_counts"]["transform_unavailable"], 1)
         for table in TABLE_FILES:
             self.assertNotIn("ixTransformValueError", str(read_rows(self.out, table)))
@@ -338,6 +338,58 @@ class TestSyntheticExport(LocatorAssertions):
 
 
 @unittest.skipUnless(HAVE_EXTRAS, "needs the arelle and parquet extras")
+class TestExportWithSecTransforms(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.work = Path(self.temp.name)
+        self.addCleanup(self.temp.cleanup)
+
+    def test_sec_values_bad_sec_input_and_unknown_transforms(self):
+        out = self.work / "out"
+        source = REPO / "tests" / "fixtures" / "sec_transforms" / "dups.htm"
+        result = run_export(source, out, self.work / "xdg")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rows = {r["fact_id"]: r for r in read_rows(out, "facts.parquet")}
+        got = {i: (rows[i]["value_status"], rows[i]["value_text"], rows[i]["source_text"])
+               for i in ("m1", "m2", "n1", "x1", "x2", "u1")}
+        self.assertEqual(
+            got,
+            {
+                "m1": ("reported", "MD", "Maryland"), "m2": ("reported", "DE", "Delaware"),
+                "n1": ("reported", "2", "two"),
+                "x1": ("invalid", None, "Narnia"), "x2": ("invalid", None, "Gondor"),
+                "u1": ("transform_unavailable", None, "alpha"),
+            },
+        )
+        self.assertEqual(rows["n1"]["value_decimal"], Decimal(2))
+        for table in TABLE_FILES:
+            self.assertNotIn("ixTransformValueError", str(read_rows(out, table)))
+        manifest = json.loads((out / "export_manifest.json").read_text())
+        self.assertEqual(
+            manifest["writers"]["arelle_sec_plugin_version"],
+            "Arelle/EDGAR transform 99e94b6c6f5c "
+            "sha256:9d2c3154229397b1bfcf5065314be7317dd8d6fd9a5cc61fb4921f2637f3dd9e",
+        )
+
+    def test_unreadable_input_to_a_standard_transform_is_still_refused(self):
+        source = self.work / "source"
+        source.mkdir()
+        shutil.copyfile(FIXTURE / "tiny.xsd", source / "tiny.xsd")
+        text = (FIXTURE / "tiny.htm").read_text(encoding="utf-8")
+        changed = text.replace('id="scaled" name="t:Amount" contextRef="now" unitRef="usd" decimals="-3" '
+                               'scale="3" format="ixt:num-dot-decimal">1,247<',
+                               'id="scaled" name="t:Amount" contextRef="now" unitRef="usd" decimals="-3" '
+                               'scale="3" format="ixt:num-dot-decimal">twelve<')
+        self.assertNotEqual(changed, text)
+        (source / "tiny.htm").write_text(changed, encoding="utf-8")
+        out = self.work / "refused"
+        result = run_export(source / "tiny.htm", out, self.work / "xdg")
+        self.assertEqual(result.returncode, 3, result.stderr)
+        self.assertIn("transformValueError", result.stderr)
+        self.assertFalse(out.exists())
+
+
+@unittest.skipUnless(HAVE_EXTRAS, "needs the arelle and parquet extras")
 class TestTypedDecimal(unittest.TestCase):
     def test_bounds_are_exact_and_nothing_is_rounded(self):
         from cmdrvl_xew.facts_export import typed_decimal
@@ -438,7 +490,8 @@ class TestRealFilingExport(LocatorAssertions):
                 # Escaped HTML blocks are serialized differently there and are not compared.
                 self.assertEqual(row["value_text"].strip(), instance_text.strip(), fact_id)
                 text += 1
-        self.assertEqual((numeric, text), (1264, 46))
+        # Every reported non-HTML-block value, including the ten ixt-sec facts (3 numeric, 7 text).
+        self.assertEqual((numeric, text), (1267, 53))
 
     def test_dimensions_agree_with_the_sec_extracted_instance(self):
         data = (SAMPLE / "XML" / "frt-20250930_htm.xml").read_bytes()
@@ -476,11 +529,22 @@ class TestRealFilingExport(LocatorAssertions):
                 row["fact_id"],
             )
 
-    def test_transform_gaps_are_the_sec_transform_facts(self):
-        unavailable = {r["fact_id"] for r in self.rows if r["value_status"] == "transform_unavailable"}
+    def test_sec_transform_facts_have_the_filed_text_and_secs_values(self):
+        # id -> (text in the filing, value in SEC's extracted instance).
+        expected = {
+            "f-2": ("☒", "true"), "f-4": ("☐", "false"),
+            "f-9": ("Maryland", "MD"), "f-11": ("Delaware", "DE"), "f-15": ("Maryland", "MD"),
+            "f-21": ("New York Stock Exchange", "NYSE"), "f-24": ("New York Stock Exchange", "NYSE"),
+            "f-995": ("one", "1"), "f-1070": ("two", "2"), "f-1162": ("two", "2"),
+        }
         in_source = {e.get("id") for e in self.source_root().iter() if (e.get("format") or "").startswith("ixt-sec:")}
-        self.assertEqual(unavailable, in_source)
-        self.assertEqual(len(unavailable), 10)
+        self.assertEqual(in_source, set(expected))
+        for fact_id, (text, value) in expected.items():
+            row = self.by_id[fact_id]
+            self.assertEqual(
+                (row["value_status"], row["source_text"], row["value_text"]), ("reported", text, value), fact_id
+            )
+        self.assertEqual([r for r in self.rows if r["value_status"] == "transform_unavailable"], [])
         self.assertEqual(sum(r["value_status"] == "nil" for r in self.rows), 4)
 
 

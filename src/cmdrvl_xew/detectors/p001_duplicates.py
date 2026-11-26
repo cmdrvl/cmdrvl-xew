@@ -24,6 +24,8 @@ from ..util import (
     generate_instance_id,
     create_finding_summary,
     exact_decimal_context,
+    mark_unavailable_value,
+    value_is_unavailable,
     qname_to_clark,
     qname_object,
     instance_id_from_signature,
@@ -96,6 +98,9 @@ class DuplicateFactsDetector(BaseDetector):
             # Identify duplicate groups (more than one fact per signature)
             duplicate_groups = {sig: facts for sig, facts in fact_groups.items() if len(facts) > 1}
             self.logger.debug(f"Found {len(duplicate_groups)} groups with duplicates")
+
+            # Recorded whether or not any conflict is found among the values that do exist.
+            context.unevaluated_duplicate_sets = self._unevaluated_sets(duplicate_groups)
 
             if not duplicate_groups:
                 self.logger.info("No duplicate facts detected")
@@ -313,7 +318,10 @@ class DuplicateFactsDetector(BaseDetector):
 
     def _rounded_conflicts(self, facts: List[Dict[str, Any]]) -> bool:
         """Return True if values are inconsistent beyond XBRL rounding tolerance."""
-        items: list[tuple[Decimal | None, object | None, object | None]] = []
+        facts = self._comparable(facts)
+        if len(facts) < 2:
+            return False
+        items:list[tuple[Decimal | None, object | None, object | None]] = []
         saw_non_nil = False
         saw_nil = False
 
@@ -362,7 +370,37 @@ class DuplicateFactsDetector(BaseDetector):
         hi = min(interval[1] for interval in intervals)
         return lo > hi
 
+    def _comparable(self, facts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """The facts that have a value. An unavailable value is neither equal nor different."""
+        return [fact for fact in facts if not value_is_unavailable(fact.get("arelle_fact"))]
+
+    def _unevaluated_sets(
+        self, duplicate_groups: Dict[bytes, List[Dict[str, Any]]]
+    ) -> List[Dict[str, Any]]:
+        """Duplicate sets with at least one value that could not be compared, in instance-id order."""
+        entries = []
+        for signature_bytes, facts in duplicate_groups.items():
+            unavailable = len(facts) - len(self._comparable(facts))
+            if not unavailable:
+                continue
+            refs = [ref for ref in (self._fact_ref_from_fact(fact) for fact in facts) if ref]
+            if not refs:
+                continue
+            entry: Dict[str, Any] = {
+                "instance_id": instance_id_from_signature(signature_bytes),
+                "concept": qname_object(facts[0]["qname"]),
+                "context_ref": refs[0]["context_ref"],
+                "fact_count": len(facts),
+                "unavailable_count": unavailable,
+                "facts": refs,
+            }
+            if refs[0].get("unit_ref"):
+                entry["unit_ref"] = refs[0]["unit_ref"]
+            entries.append(entry)
+        return sorted(entries, key=lambda entry: entry["instance_id"])
+
     def _strict_conflicts(self, facts: List[Dict[str, Any]]) -> bool:
+        facts = self._comparable(facts)
         normalized_values = []
         for fact in facts:
             raw_value = str(fact['value']) if fact['value'] is not None else None
@@ -399,6 +437,7 @@ class DuplicateFactsDetector(BaseDetector):
         value = fact.get('value')
         if value is not None:
             ref['value'] = str(value)
+        mark_unavailable_value(ref, fact.get('arelle_fact'))
 
         arelle_fact = fact.get('arelle_fact')
         if arelle_fact is not None:

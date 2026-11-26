@@ -30,6 +30,7 @@ from ..instrument_registry import (
     absent_registry_lookup,
     invalid_registry_lookup,
 )
+from ..sec_transforms import SEC_IXT_NAMESPACE
 from ..util import qname_object, qname_to_parts
 
 
@@ -225,6 +226,14 @@ class InstrumentIdentityCollapseDetector(BaseDetector):
         return context_ref, field, evidence
 
     def _arelle_fact_value(self, fact: Any) -> str:
+        # For SEC ixt-sec facts P008 reads what the filing displays, not the transformed code:
+        # its titles, exchange keys and registry matching are built on the displayed names
+        # ("NYSE American", where the code is NYSEAMER).
+        transform = getattr(fact, "format", None)
+        if getattr(transform, "namespaceURI", None) == SEC_IXT_NAMESPACE:
+            displayed = normalize_text(getattr(fact, "rawValue", ""))
+            if displayed:
+                return displayed
         value = normalize_text(getattr(fact, "value", ""))
         if value.upper() == "(IXTRANSFORMVALUEERROR)":
             raw = normalize_text(getattr(fact, "rawValue", ""))

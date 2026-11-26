@@ -1,7 +1,7 @@
 """Base detector interface and shared utilities for XEW pattern detection."""
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Any, Optional
 import logging
 
@@ -53,6 +53,9 @@ class DetectorContext:
     filed_date: str
     xbrl_model: Any  # Arelle model object
     config: Dict[str, Any]  # Configuration parameters
+    arelle_loaded: bool = False  # True when xbrl_model is a model Arelle read
+    # Duplicate sets XEW-P001 could not fully compare, written to the findings "ext" object.
+    unevaluated_duplicate_sets: List[Dict[str, Any]] = field(default_factory=list)
 
 
 class BaseDetector(ABC):

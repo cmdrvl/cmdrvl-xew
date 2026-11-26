@@ -69,11 +69,8 @@ class ToolchainRecorder:
             "config": expanded_config,
         }
 
-        # Add optional components when available
-        arelle_sec_version = self._get_arelle_sec_plugin_version()
-        if arelle_sec_version:
-            toolchain["arelle_sec_plugin_version"] = arelle_sec_version
-
+        # Add optional components when available. arelle_sec_plugin_version is not detected
+        # here: the caller records what it actually loaded (see sec_transforms).
         dqcrt_version = self._get_dqcrt_version()
         if dqcrt_version:
             toolchain["dqcrt_version"] = dqcrt_version
@@ -117,27 +114,6 @@ class ToolchainRecorder:
         version = detect_arelle_version()
         self._cached_versions["arelle_version"] = version
         return version
-
-    def _get_arelle_sec_plugin_version(self) -> Optional[str]:
-        """Get Arelle SEC plugin version if available."""
-        if "arelle_sec_plugin_version" in self._cached_versions:
-            return self._cached_versions["arelle_sec_plugin_version"]
-
-        try:
-            # Try to detect SEC plugin version
-            # This is a placeholder - actual implementation depends on how SEC plugin exposes version
-            import arelle
-            # Check for SEC-specific modules
-            if hasattr(arelle, 'plugin') or hasattr(arelle, 'EdgarRenderer'):
-                version = "detected"  # Placeholder
-                self._cached_versions["arelle_sec_plugin_version"] = version
-                return version
-
-        except ImportError:
-            pass
-
-        self._cached_versions["arelle_sec_plugin_version"] = None
-        return None
 
     def _get_dqcrt_version(self) -> Optional[str]:
         """Get XBRL US Data Quality Committee Rules version if available."""

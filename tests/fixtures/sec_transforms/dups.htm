@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic inline XBRL for tests/test_sec_transforms.py. Not a real filing.
+     Each group repeats one concept in one context and unit. The expected result is above it. -->
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:ix="http://www.xbrl.org/2013/inlineXBRL"
+      xmlns:ixt-sec="http://www.sec.gov/inlineXBRL/transformation/2015-08-31"
+      xmlns:zz="http://example.com/unknown-transforms"
+      xmlns:xbrli="http://www.xbrl.org/2003/instance"
+      xmlns:link="http://www.xbrl.org/2003/linkbase"
+      xmlns:xlink="http://www.w3.org/1999/xlink"
+      xmlns:s="http://example.com/sec"
+      xml:lang="en-US">
+<head><title>dups</title></head>
+<body>
+<div style="display:none">
+<ix:header>
+<ix:references><link:schemaRef xlink:type="simple" xlink:href="sec.xsd"/></ix:references>
+<ix:resources>
+<xbrli:context id="now">
+<xbrli:entity><xbrli:identifier scheme="http://example.com/id">E1</xbrli:identifier></xbrli:entity>
+<xbrli:period><xbrli:instant>2025-09-30</xbrli:instant></xbrli:period>
+</xbrli:context>
+<xbrli:context id="prior">
+<xbrli:entity><xbrli:identifier scheme="http://example.com/id">E1</xbrli:identifier></xbrli:entity>
+<xbrli:period><xbrli:instant>2024-09-30</xbrli:instant></xbrli:period>
+</xbrli:context>
+<xbrli:context id="y2025">
+<xbrli:entity><xbrli:identifier scheme="http://example.com/id">E1</xbrli:identifier></xbrli:entity>
+<xbrli:period><xbrli:startDate>2025-01-01</xbrli:startDate><xbrli:endDate>2025-12-31</xbrli:endDate></xbrli:period>
+</xbrli:context>
+<xbrli:context id="y2024">
+<xbrli:entity><xbrli:identifier scheme="http://example.com/id">E1</xbrli:identifier></xbrli:entity>
+<xbrli:period><xbrli:startDate>2024-01-01</xbrli:startDate><xbrli:endDate>2024-12-31</xbrli:endDate></xbrli:period>
+</xbrli:context>
+<xbrli:context id="y2023">
+<xbrli:entity><xbrli:identifier scheme="http://example.com/id">E1</xbrli:identifier></xbrli:entity>
+<xbrli:period><xbrli:startDate>2023-01-01</xbrli:startDate><xbrli:endDate>2023-12-31</xbrli:endDate></xbrli:period>
+</xbrli:context>
+<xbrli:context id="y2022">
+<xbrli:entity><xbrli:identifier scheme="http://example.com/id">E1</xbrli:identifier></xbrli:entity>
+<xbrli:period><xbrli:startDate>2022-01-01</xbrli:startDate><xbrli:endDate>2022-12-31</xbrli:endDate></xbrli:period>
+</xbrli:context>
+<xbrli:unit id="pure"><xbrli:measure>xbrli:pure</xbrli:measure></xbrli:unit>
+<!-- A unit XEW-P004 reports on a decimal concept, so these facts also reach P004 evidence. -->
+<xbrli:unit id="widget"><xbrli:measure>s:widget</xbrli:measure></xbrli:unit>
+</ix:resources>
+</ix:header>
+</div>
+
+<!-- CONFLICT, fully evaluated: Maryland is MD, Delaware is DE. -->
+<p><ix:nonNumeric id="m1" name="s:Note" contextRef="y2025" format="ixt-sec:stateprovnameen">Maryland</ix:nonNumeric></p>
+<p><ix:nonNumeric id="m2" name="s:Note" contextRef="y2025" format="ixt-sec:stateprovnameen">Delaware</ix:nonNumeric></p>
+
+<!-- CONSISTENT, fully evaluated: "two" is 2. -->
+<p><ix:nonFraction id="n1" name="s:Ratio" contextRef="now" unitRef="pure" decimals="INF" format="ixt-sec:numwordsen">two</ix:nonFraction></p>
+<p><ix:nonFraction id="n2" name="s:Ratio" contextRef="now" unitRef="pure" decimals="INF">2</ix:nonFraction></p>
+
+<!-- UNEVALUATED, no conflict claimed: a SEC transform given text it cannot read. -->
+<p><ix:nonNumeric id="x1" name="s:Note" contextRef="y2024" format="ixt-sec:stateprovnameen">Narnia</ix:nonNumeric></p>
+<p><ix:nonNumeric id="x2" name="s:Note" contextRef="y2024" format="ixt-sec:stateprovnameen">Gondor</ix:nonNumeric></p>
+
+<!-- UNEVALUATED, no conflict claimed: a transform nothing provides. -->
+<p><ix:nonNumeric id="u1" name="s:Note" contextRef="y2023" format="zz:mystery">alpha</ix:nonNumeric></p>
+<p><ix:nonNumeric id="u2" name="s:Note" contextRef="y2023" format="zz:mystery">beta</ix:nonNumeric></p>
+
+<!-- UNEVALUATED: identical unreadable text is not proof of equal values. -->
+<p><ix:nonNumeric id="s1" name="s:Note" contextRef="y2022" format="zz:mystery">same</ix:nonNumeric></p>
+<p><ix:nonNumeric id="s2" name="s:Note" contextRef="y2022" format="zz:mystery">same</ix:nonNumeric></p>
+
+<!-- CONFLICT between the two readable values 5 and 7, and UNEVALUATED because of the third. -->
+<p><ix:nonFraction id="p1" name="s:Amount" contextRef="now" unitRef="widget" decimals="INF" format="zz:mystery">unreadable</ix:nonFraction></p>
+<p><ix:nonFraction id="p2" name="s:Amount" contextRef="now" unitRef="widget" decimals="INF">5</ix:nonFraction></p>
+<p><ix:nonFraction id="p3" name="s:Amount" contextRef="now" unitRef="widget" decimals="INF">7</ix:nonFraction></p>
+
+<!-- UNEVALUATED, no conflict claimed: one readable value is not enough to compare. -->
+<p><ix:nonFraction id="q1" name="s:Amount" contextRef="prior" unitRef="widget" decimals="INF" format="zz:mystery">unreadable</ix:nonFraction></p>
+<p><ix:nonFraction id="q2" name="s:Amount" contextRef="prior" unitRef="widget" decimals="INF">9</ix:nonFraction></p>
+</body>
+</html>

@@ -25,6 +25,32 @@ def exact_decimal_context() -> Iterator[Context]:
         yield context
 
 
+def value_is_unavailable(fact: Any) -> bool:
+    """True if Arelle could not produce the fact's value (unknown transform, or unreadable input).
+
+    Arelle then returns one shared placeholder string for every such fact, so it must never be
+    compared or reported as a value.
+    """
+    if fact is None:
+        return False
+    try:
+        from arelle.ModelValue import INVALIDixVALUE  # type: ignore
+    except ImportError:
+        return False
+    return getattr(fact, "value", None) is INVALIDixVALUE
+
+
+def mark_unavailable_value(ref: dict[str, Any], fact: Any) -> None:
+    """For an unavailable value, replace ``ref['value']`` with what the filing itself shows."""
+    if not value_is_unavailable(fact):
+        return
+    ref.pop("value", None)
+    source = {"value_status": "unavailable", "source_text": str(fact.rawValue)}
+    if fact.get("format"):
+        source["format"] = fact.get("format")
+    ref["source"] = source
+
+
 def utc_now_iso() -> str:
     """UTC timestamp in ISO 8601 format with 'Z' suffix and no fractional seconds."""
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")

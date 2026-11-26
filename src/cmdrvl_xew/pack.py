@@ -21,6 +21,7 @@ from .artifacts import (
     extract_schema_refs,
 )
 from . import __version__
+from . import sec_transforms
 from .comparator import comparator_policy, ComparatorPolicy
 from .comparator_selection import select_comparator_and_history
 from .exit_codes import ExitCode, exit_invocation_error, exit_processing_error
@@ -50,6 +51,8 @@ from .markers import (
 _ACCESSION_RE = re.compile(r"^\d{10}-\d{2}-\d{6}$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 logger = logging.getLogger(__name__)
+# Same cap as a finding's instance list.
+_MAX_UNEVALUATED_SETS = 100
 
 
 def _compute_pack_sha256(files: list[FileHash]) -> str:
@@ -272,6 +275,8 @@ def _load_xbrl_model_with_arelle(
     try:
         from .edgar_fetch import _validate_user_agent  # type: ignore
 
+        # Before the controller exists: nothing registered earlier in this process may take part.
+        _require_sec_transforms(sec_transforms.reset_plugin_registry)
         controller = Cntlr.Cntlr(logFileName="logToBuffer")
         user_agent = (os.environ.get("XEW_USER_AGENT") or "").strip()
         if user_agent:
@@ -291,6 +296,9 @@ def _load_xbrl_model_with_arelle(
             # If taxonomy package loading fails, continue; Arelle will fall back
             # to its web cache / direct URL resolution depending on offline mode.
             logger.debug("Arelle taxonomy package remapping rebuild failed.", exc_info=True)
+
+        # Refused even without --require-arelle: Arelle never runs without the SEC transforms.
+        _require_sec_transforms(lambda: sec_transforms.register(controller))
 
         mode = (resolution_mode or "offline_preferred").strip().lower()
 
@@ -338,10 +346,18 @@ def _load_xbrl_model_with_arelle(
         logging.warning(f"Failed to load XBRL model via Arelle: {e}; using mock model")
         return None
     finally:
+        sec_transforms.reset_plugin_registry()
         if previous_xdg is None:
             os.environ.pop("XDG_CONFIG_HOME", None)
         else:
             os.environ["XDG_CONFIG_HOME"] = previous_xdg
+
+
+def _require_sec_transforms(step) -> None:
+    try:
+        step()
+    except Exception as e:
+        exit_processing_error(f"refusing to load with Arelle: the SEC inline transforms are not in place ({e})")
 
 
 def _run_xew_detection(primary_path: Path, artifacts_dir: Path, context_metadata: dict) -> tuple[list, DetectorContext]:
@@ -411,6 +427,7 @@ def _run_xew_detection(primary_path: Path, artifacts_dir: Path, context_metadata
             disable_arelle=disable_arelle,
             arelle_xdg_config_home=arelle_xdg_config_home,
         )
+        detection_context.arelle_loaded = model is not None
         detection_context.xbrl_model = model or _create_mock_xbrl_model(primary_path)
 
         # Run all registered detectors with enhanced logging.
@@ -1428,9 +1445,6 @@ def run_pack(args: argparse.Namespace) -> int:
         for ref in non_redistributable_refs
     ]
 
-    # Write toolchain metadata to toolchain.json (contract-required file)
-    write_json(out_dir / toolchain_path_rel, toolchain_file_obj)
-
     # === Extract Issuer/Filing Metadata from iXBRL ===
 
     # Extract metadata from primary document using the dedicated metadata module
@@ -1632,6 +1646,23 @@ def run_pack(args: argparse.Namespace) -> int:
                 "content_type": content_type or "application/json",
             }
         )
+
+    # Record the SEC transforms only if Arelle actually read the filing with them.
+    sec_plugin = sec_transforms.identity() if detection_context.arelle_loaded else sec_transforms.NOT_LOADED
+    findings_toolchain_obj["arelle_sec_plugin_version"] = sec_plugin
+    toolchain_file_obj["arelle_sec_plugin_version"] = sec_plugin
+    # Write toolchain metadata to toolchain.json (contract-required file)
+    write_json(out_dir / toolchain_path_rel, toolchain_file_obj)
+
+    unevaluated = detection_context.unevaluated_duplicate_sets
+    if unevaluated:
+        listed = unevaluated[:_MAX_UNEVALUATED_SETS]
+        ext_metadata["p001_unevaluated_duplicate_sets"] = {
+            "total": len(unevaluated),
+            "included": len(listed),
+            "truncated": len(listed) < len(unevaluated),
+            "sets": listed,
+        }
 
     # Use FindingsWriter for deterministic output
     findings_writer = FindingsWriter(out_dir / findings_path_rel)

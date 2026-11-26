@@ -34,4 +34,6 @@ where = ["src"]
 cmdrvl_xew = [
   "schemas/*.json",
   "spec/*.json",
+  "xew_edgar_ixt_sec/NOTICE.md",
+  "xew_edgar_ixt_sec/LICENSE.EDGAR",
 ]

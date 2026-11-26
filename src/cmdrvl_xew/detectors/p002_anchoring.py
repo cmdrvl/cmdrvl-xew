@@ -15,7 +15,8 @@ from ..util import (
     create_finding_summary,
     qname_to_clark,
     qname_object,
-    instance_id_from_signature
+    instance_id_from_signature,
+    mark_unavailable_value,
 )
 
 logger = logging.getLogger(__name__)
@@ -444,6 +445,7 @@ class AnchoringDefectsDetector(BaseDetector):
         value = getattr(fact, 'value', None)
         if value is not None:
             ref['value'] = str(value)
+        mark_unavailable_value(ref, fact)
 
         is_nil = getattr(fact, 'isNil', None)
         if is_nil is not None:

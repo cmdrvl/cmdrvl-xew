@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic taxonomy for tests/test_sec_transforms.py. The last three names are the local names
+     XEW-P008 matches. -->
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            xmlns:xbrli="http://www.xbrl.org/2003/instance"
+            xmlns:s="http://example.com/sec"
+            targetNamespace="http://example.com/sec"
+            elementFormDefault="qualified">
+  <xsd:import namespace="http://www.xbrl.org/2003/instance" schemaLocation="http://www.xbrl.org/2003/xbrl-instance-2003-12-31.xsd"/>
+
+  <xsd:element name="Note" id="s_Note" type="xbrli:stringItemType" substitutionGroup="xbrli:item" xbrli:periodType="duration"/>
+  <xsd:element name="Ratio" id="s_Ratio" type="xbrli:decimalItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant"/>
+  <xsd:element name="Amount" id="s_Amount" type="xbrli:decimalItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant"/>
+
+  <xsd:element name="Security12bTitle" id="s_Security12bTitle" type="xbrli:stringItemType" substitutionGroup="xbrli:item" xbrli:periodType="duration"/>
+  <xsd:element name="TradingSymbol" id="s_TradingSymbol" type="xbrli:stringItemType" substitutionGroup="xbrli:item" xbrli:periodType="duration"/>
+  <xsd:element name="SecurityExchangeName" id="s_SecurityExchangeName" type="xbrli:stringItemType" substitutionGroup="xbrli:item" xbrli:periodType="duration"/>
+</xsd:schema>

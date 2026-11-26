@@ -3,7 +3,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml"
       xmlns:ix="http://www.xbrl.org/2013/inlineXBRL"
       xmlns:ixt="http://www.xbrl.org/inlineXBRL/transformation/2020-02-12"
-      xmlns:ixt-sec="http://www.sec.gov/inlineXBRL/transformation/2015-08-31"
+      xmlns:zz="http://example.com/unknown-transforms"
       xmlns:xbrli="http://www.xbrl.org/2003/instance"
       xmlns:xbrldi="http://xbrl.org/2006/xbrldi"
       xmlns:link="http://www.xbrl.org/2003/linkbase"
@@ -82,7 +82,7 @@
 <!-- Escaped markup with relative links: the value must not depend on where the file sits. -->
 <div><ix:nonNumeric id="escaped" name="t:Section" contextRef="prior-year" escape="true"><p>See <a href="exhibit.htm">the exhibit</a><img src="logo.png" alt="logo"/></p></ix:nonNumeric></div>
 
-<!-- A SEC transform that arelle-release does not ship. -->
-<p><ix:nonNumeric id="sec-transform" name="t:Note" contextRef="older-year" format="ixt-sec:stateprovnameen">Maryland</ix:nonNumeric></p>
+<!-- A transform nothing provides. -->
+<p><ix:nonNumeric id="unknown-transform" name="t:Note" contextRef="older-year" format="zz:mystery">Maryland</ix:nonNumeric></p>
 </body>
 </html>

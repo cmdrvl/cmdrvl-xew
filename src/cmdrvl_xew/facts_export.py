@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
+from . import sec_transforms
 from .exit_codes import (
     ExitCode,
     exit_config_error,
@@ -30,7 +31,7 @@ from .pack import (
     _validate_date_format,
     _validate_form_type,
 )
-from .util import exact_decimal_context
+from .util import exact_decimal_context, value_is_unavailable
 
 SCHEMA_ID = "xew.facts.v1"
 MANIFEST_NAME = "export_manifest.json"
@@ -44,6 +45,7 @@ _XML_SPACE = " \t\r\n"
 
 # The only load errors an export may carry: the affected facts are kept and marked.
 _TOLERATED_ERROR_SUFFIX = ":invalidTransformation"
+_TRANSFORM_VALUE_ERROR_SUFFIX = ":transformValueError"
 
 # (name, type) in column order. Types: "str", "int", "bool", "decimal".
 FACT_COLUMNS = (
@@ -378,12 +380,26 @@ def _fact_value(fact: Any) -> tuple[str, str | None]:
 _FACT_KINDS = {"nonFraction": "numeric", "nonNumeric": "non_numeric", "fraction": "fraction", "tuple": "tuple"}
 
 
+def _unreadable_sec_facts(model: Any) -> int:
+    return sum(
+        1
+        for fact in model.factsInInstance
+        if getattr(getattr(fact, "format", None), "namespaceURI", None) == sec_transforms.SEC_IXT_NAMESPACE
+        and value_is_unavailable(fact)
+    )
+
+
 def build_tables(model: Any, primary_path: Path, filing: dict[str, str | None]) -> tuple[dict[str, list], dict]:
     """Turn a loaded Arelle model into table rows plus the manifest's accounting."""
     error_counts: dict[str, int] = {}
     for error in model.errors:
         error_counts[str(error)] = error_counts.get(str(error), 0) + 1
     fatal = sorted(code for code in error_counts if not code.endswith(_TOLERATED_ERROR_SUFFIX))
+    # A SEC transform given text it cannot read is kept as an "invalid" row. The same error from
+    # any other transform still refuses the export.
+    bad_input = [code for code in fatal if code.endswith(_TRANSFORM_VALUE_ERROR_SUFFIX)]
+    if bad_input and sum(error_counts[code] for code in bad_input) <= _unreadable_sec_facts(model):
+        fatal = [code for code in fatal if code not in bad_input]
     if fatal:
         raise ExportRefused(
             "Arelle reported load errors, so the export could be incomplete or mistyped: "
@@ -639,7 +655,12 @@ def export_facts(
             name: {"rows": len(tables[name]), "sha256": hashlib.sha256(payload).hexdigest()}
             for name, payload in payloads.items()
         },
-        "writers": {"arelle": Version.__version__, "cmdrvl-xew": __version__, "pyarrow": pyarrow.__version__},
+        "writers": {
+            "arelle": Version.__version__,
+            "arelle_sec_plugin_version": sec_transforms.identity(),
+            "cmdrvl-xew": __version__,
+            "pyarrow": pyarrow.__version__,
+        },
     }
     payloads[MANIFEST_NAME] = (json.dumps(manifest, sort_keys=True, indent=2) + "\n").encode("utf-8")
 

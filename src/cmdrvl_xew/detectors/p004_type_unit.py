@@ -19,7 +19,8 @@ from ..util import (
     create_finding_summary,
     qname_to_clark,
     qname_object,
-    instance_id_from_signature
+    instance_id_from_signature,
+    mark_unavailable_value,
 )
 
 logger = logging.getLogger(__name__)
@@ -430,6 +431,7 @@ class TypeUnitNumericDetector(BaseDetector):
             if fact_data.get('precision') is not None:
                 fact_ref['precision'] = str(fact_data['precision'])
             arelle_fact = fact_data.get('fact')
+            mark_unavailable_value(fact_ref, arelle_fact)
             if arelle_fact is not None:
                 is_nil = getattr(arelle_fact, 'isNil', None)
                 if is_nil is not None:
