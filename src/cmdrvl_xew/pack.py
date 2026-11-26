@@ -25,7 +25,7 @@ from .comparator import comparator_policy, ComparatorPolicy
 from .comparator_selection import select_comparator_and_history
 from .exit_codes import ExitCode, exit_invocation_error, exit_processing_error
 from .taxonomy import NonRedistributableReference, non_redistributable_reference_from_path
-from .util import FileHash, qname_to_clark, sha256_file, utc_now_iso, write_json
+from .util import FileHash, exact_decimal_context, qname_to_clark, sha256_file, utc_now_iso, write_json
 from .findings import FindingsWriter
 from .pack_manifest import PackManifestBuilder
 from .toolchain import ToolchainRecorder
@@ -296,7 +296,10 @@ def _load_xbrl_model_with_arelle(
 
         def _load(work_offline: bool) -> object:
             controller.webCache.workOffline = work_offline
-            model = controller.modelManager.load(str(primary_path))
+            # Arelle applies ix:scale and sign in the caller's decimal context, and computes
+            # and caches every inline value while loading.
+            with exact_decimal_context():
+                model = controller.modelManager.load(str(primary_path))
             if model is None:
                 raise RuntimeError("Arelle returned no model (load returned None)")
             return model

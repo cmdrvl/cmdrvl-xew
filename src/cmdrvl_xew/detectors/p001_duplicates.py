@@ -23,6 +23,7 @@ from ..util import (
     generate_finding_id,
     generate_instance_id,
     create_finding_summary,
+    exact_decimal_context,
     qname_to_clark,
     qname_object,
     instance_id_from_signature,
@@ -346,11 +347,13 @@ class DuplicateFactsDetector(BaseDetector):
         if not saw_non_nil:
             return False
 
+        # value +/- tolerance and abs(value) round to the context's precision.
         intervals: list[tuple[Decimal, Decimal]] = []
-        for value, decimals, precision in items:
-            if value is None:
-                continue
-            intervals.append(self._numeric_rounding_interval(value, decimals=decimals, precision=precision))
+        with exact_decimal_context():
+            for value, decimals, precision in items:
+                if value is None:
+                    continue
+                intervals.append(self._numeric_rounding_interval(value, decimals=decimals, precision=precision))
 
         if not intervals:
             return False

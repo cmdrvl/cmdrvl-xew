@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic inline XBRL for tests/test_pack_decimal_precision.py. Not a real filing.
+     Each concept appears twice in one context and unit. The expected results are in the comments. -->
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:ix="http://www.xbrl.org/2013/inlineXBRL"
+      xmlns:xbrli="http://www.xbrl.org/2003/instance"
+      xmlns:link="http://www.xbrl.org/2003/linkbase"
+      xmlns:xlink="http://www.w3.org/1999/xlink"
+      xmlns:w="http://example.com/wide"
+      xml:lang="en-US">
+<head><title>wide</title></head>
+<body>
+<div style="display:none">
+<ix:header>
+<ix:references><link:schemaRef xlink:type="simple" xlink:href="wide.xsd"/></ix:references>
+<ix:resources>
+<xbrli:context id="now">
+<xbrli:entity><xbrli:identifier scheme="http://example.com/id">E1</xbrli:identifier></xbrli:entity>
+<xbrli:period><xbrli:instant>2025-09-30</xbrli:instant></xbrli:period>
+</xbrli:context>
+<xbrli:unit id="pure"><xbrli:measure>xbrli:pure</xbrli:measure></xbrli:unit>
+</ix:resources>
+</ix:header>
+</div>
+
+<!-- CONFLICT: different values that agree in their first 30 digits. -->
+<p><ix:nonFraction id="lf1" name="w:LongFraction" contextRef="now" unitRef="pure" decimals="INF">0.1234567890123456789012345678901</ix:nonFraction></p>
+<p><ix:nonFraction id="lf2" name="w:LongFraction" contextRef="now" unitRef="pure" decimals="INF">0.1234567890123456789012345678902</ix:nonFraction></p>
+
+<!-- CONFLICT: different 30-digit integers. -->
+<p><ix:nonFraction id="wi1" name="w:WideInteger" contextRef="now" unitRef="pure" decimals="INF">123456789012345678901234567890</ix:nonFraction></p>
+<p><ix:nonFraction id="wi2" name="w:WideInteger" contextRef="now" unitRef="pure" decimals="INF">123456789012345678901234567891</ix:nonFraction></p>
+
+<!-- CONFLICT: 31 digits that only appear once scale is applied. -->
+<p><ix:nonFraction id="sw1" name="w:ScaledWide" contextRef="now" unitRef="pure" decimals="INF" scale="3">1234567890123456789012345678.901</ix:nonFraction></p>
+<p><ix:nonFraction id="sw2" name="w:ScaledWide" contextRef="now" unitRef="pure" decimals="INF" scale="3">1234567890123456789012345678.902</ix:nonFraction></p>
+
+<!-- CONFLICT (ordinary); the long value must be reported as written. -->
+<p><ix:nonFraction id="rp1" name="w:Reported" contextRef="now" unitRef="pure" decimals="INF">5.1234567890123456789012345678901</ix:nonFraction></p>
+<p><ix:nonFraction id="rp2" name="w:Reported" contextRef="now" unitRef="pure" decimals="INF">7</ix:nonFraction></p>
+
+<!-- CONFLICT: both values have 28 digits, so loading keeps them. The first is correct to 27
+     decimals, that is, within 0.0000000000000000000000000005 of 1.000000000000000000000000001.
+     The second is exactly 1.000000000000000000000000002, which is outside that. -->
+<p><ix:nonFraction id="ot1" name="w:OutsideTolerance" contextRef="now" unitRef="pure" decimals="27">1.000000000000000000000000001</ix:nonFraction></p>
+<p><ix:nonFraction id="ot2" name="w:OutsideTolerance" contextRef="now" unitRef="pure" decimals="INF">1.000000000000000000000000002</ix:nonFraction></p>
+
+<!-- NO CONFLICT: the first is correct to 30 decimals (within 5e-31 of 2); the second is
+     2 + 4e-31, which is inside that. -->
+<p><ix:nonFraction id="it1" name="w:InsideTolerance" contextRef="now" unitRef="pure" decimals="30">2.000000000000000000000000000000</ix:nonFraction></p>
+<p><ix:nonFraction id="it2" name="w:InsideTolerance" contextRef="now" unitRef="pure" decimals="INF">2.0000000000000000000000000000004</ix:nonFraction></p>
+
+<!-- NO CONFLICT (ordinary rounding to thousands). -->
+<p><ix:nonFraction id="or1" name="w:Ordinary" contextRef="now" unitRef="pure" decimals="-3">1247000</ix:nonFraction></p>
+<p><ix:nonFraction id="or2" name="w:Ordinary" contextRef="now" unitRef="pure" decimals="INF">1247400</ix:nonFraction></p>
+</body>
+</html>

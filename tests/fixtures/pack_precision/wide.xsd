@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic taxonomy for tests/test_pack_decimal_precision.py. One concept per case. -->
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            xmlns:xbrli="http://www.xbrl.org/2003/instance"
+            xmlns:w="http://example.com/wide"
+            targetNamespace="http://example.com/wide"
+            elementFormDefault="qualified">
+  <xsd:import namespace="http://www.xbrl.org/2003/instance" schemaLocation="http://www.xbrl.org/2003/xbrl-instance-2003-12-31.xsd"/>
+
+  <xsd:element name="LongFraction" id="w_LongFraction" type="xbrli:decimalItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant"/>
+  <xsd:element name="WideInteger" id="w_WideInteger" type="xbrli:decimalItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant"/>
+  <xsd:element name="ScaledWide" id="w_ScaledWide" type="xbrli:decimalItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant"/>
+  <xsd:element name="Reported" id="w_Reported" type="xbrli:decimalItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant"/>
+  <xsd:element name="OutsideTolerance" id="w_OutsideTolerance" type="xbrli:decimalItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant"/>
+  <xsd:element name="InsideTolerance" id="w_InsideTolerance" type="xbrli:decimalItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant"/>
+  <xsd:element name="Ordinary" id="w_Ordinary" type="xbrli:decimalItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant"/>
+</xsd:schema>

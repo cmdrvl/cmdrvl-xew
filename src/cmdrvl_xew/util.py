@@ -2,11 +2,27 @@ from __future__ import annotations
 
 import hashlib
 import json
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation
+from decimal import Context, Decimal, InvalidOperation, localcontext
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Iterator
+
+# Far more digits than a filed fact carries. Python's default of 28 silently rounds long values.
+XBRL_DECIMAL_PRECISION = 10_000
+
+
+@contextmanager
+def exact_decimal_context() -> Iterator[Context]:
+    """A local decimal context in which XBRL value arithmetic does not round.
+
+    Use it only around loading and comparing filed values: a division that does not terminate would
+    produce XBRL_DECIMAL_PRECISION digits. The caller's context is restored on exit.
+    """
+    with localcontext() as context:
+        context.prec = XBRL_DECIMAL_PRECISION
+        yield context
 
 
 def utc_now_iso() -> str:

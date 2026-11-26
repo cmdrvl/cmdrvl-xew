@@ -30,13 +30,10 @@ from .pack import (
     _validate_date_format,
     _validate_form_type,
 )
+from .util import exact_decimal_context
 
 SCHEMA_ID = "xew.facts.v1"
 MANIFEST_NAME = "export_manifest.json"
-
-# Arelle applies ix:scale and sign with Decimal arithmetic in the caller's context. Python's
-# default of 28 digits would round long fractions silently and reject long integers.
-_ARELLE_DECIMAL_PRECISION = 10_000
 
 DECIMAL_PRECISION = 38
 DECIMAL_SCALE = 18
@@ -617,8 +614,8 @@ def export_facts(
     """Load ``primary_path`` offline and write the tables into ``out_dir``. Returns the manifest."""
     import pyarrow  # type: ignore
 
-    with decimal.localcontext() as context:
-        context.prec = _ARELLE_DECIMAL_PRECISION
+    # The loader computes values under this context; it also covers anything read here.
+    with exact_decimal_context():
         model = _load_xbrl_model_with_arelle(
             primary_path,
             resolution_mode="offline_only",
