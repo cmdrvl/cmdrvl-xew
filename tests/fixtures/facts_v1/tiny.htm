@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic inline XBRL for tests/test_facts_export.py. Not a real filing. -->
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:ix="http://www.xbrl.org/2013/inlineXBRL"
+      xmlns:ixt="http://www.xbrl.org/inlineXBRL/transformation/2020-02-12"
+      xmlns:ixt-sec="http://www.sec.gov/inlineXBRL/transformation/2015-08-31"
+      xmlns:xbrli="http://www.xbrl.org/2003/instance"
+      xmlns:xbrldi="http://xbrl.org/2006/xbrldi"
+      xmlns:link="http://www.xbrl.org/2003/linkbase"
+      xmlns:xlink="http://www.w3.org/1999/xlink"
+      xmlns:iso4217="http://www.xbrl.org/2003/iso4217"
+      xmlns:t="http://example.com/tiny"
+      xml:lang="en-US">
+<head><title>tiny</title></head>
+<body>
+<div style="display:none">
+<ix:header>
+<ix:hidden>
+<ix:nonNumeric id="hidden-note" name="t:Note" contextRef="year">hidden value</ix:nonNumeric>
+</ix:hidden>
+<ix:references><link:schemaRef xlink:type="simple" xlink:href="tiny.xsd"/></ix:references>
+<ix:resources>
+<xbrli:context id="now">
+<xbrli:entity><xbrli:identifier scheme="http://example.com/id">E1</xbrli:identifier></xbrli:entity>
+<xbrli:period><xbrli:instant>2025-09-30</xbrli:instant></xbrli:period>
+</xbrli:context>
+<xbrli:context id="year">
+<xbrli:entity><xbrli:identifier scheme="http://example.com/id">E1</xbrli:identifier></xbrli:entity>
+<xbrli:period><xbrli:startDate>2025-01-01</xbrli:startDate><xbrli:endDate>2025-12-31</xbrli:endDate></xbrli:period>
+</xbrli:context>
+<xbrli:context id="prior-year">
+<xbrli:entity><xbrli:identifier scheme="http://example.com/id">E1</xbrli:identifier></xbrli:entity>
+<xbrli:period><xbrli:startDate>2024-01-01</xbrli:startDate><xbrli:endDate>2024-12-31</xbrli:endDate></xbrli:period>
+</xbrli:context>
+<xbrli:context id="older-year">
+<xbrli:entity><xbrli:identifier scheme="http://example.com/id">E1</xbrli:identifier></xbrli:entity>
+<xbrli:period><xbrli:startDate>2023-01-01</xbrli:startDate><xbrli:endDate>2023-12-31</xbrli:endDate></xbrli:period>
+</xbrli:context>
+<xbrli:context id="now-dims">
+<xbrli:entity><xbrli:identifier scheme="http://example.com/id">E1</xbrli:identifier>
+<xbrli:segment>
+<xbrldi:explicitMember dimension="t:SegmentAxis">t:RetailMember</xbrldi:explicitMember>
+<xbrldi:typedMember dimension="t:LoanAxis"><t:LoanNumber>0007</t:LoanNumber></xbrldi:typedMember>
+</xbrli:segment>
+</xbrli:entity>
+<xbrli:period><xbrli:instant>2025-09-30</xbrli:instant></xbrli:period>
+</xbrli:context>
+<xbrli:unit id="usd"><xbrli:measure>iso4217:USD</xbrli:measure></xbrli:unit>
+<xbrli:unit id="pure"><xbrli:measure>xbrli:pure</xbrli:measure></xbrli:unit>
+<xbrli:unit id="usd-per-share"><xbrli:divide>
+<xbrli:unitNumerator><xbrli:measure>iso4217:USD</xbrli:measure></xbrli:unitNumerator>
+<xbrli:unitDenominator><xbrli:measure>xbrli:shares</xbrli:measure></xbrli:unitDenominator>
+</xbrli:divide></xbrli:unit>
+</ix:resources>
+</ix:header>
+</div>
+
+<p>Scaled thousands: <ix:nonFraction id="scaled" name="t:Amount" contextRef="now" unitRef="usd" decimals="-3" scale="3" format="ixt:num-dot-decimal">1,247</ix:nonFraction></p>
+<p>Negative scaled: (<ix:nonFraction id="negative" name="t:Amount" contextRef="now-dims" unitRef="usd" decimals="-5" scale="6" sign="-" format="ixt:num-dot-decimal">2.5</ix:nonFraction>)</p>
+<p>Percent: <ix:nonFraction id="percent" name="t:Ratio" contextRef="now" unitRef="pure" decimals="INF" scale="-2">0.85</ix:nonFraction>%</p>
+<p>Dash: <ix:nonFraction id="dash" name="t:PerShare" contextRef="year" unitRef="usd-per-share" decimals="2" format="ixt:fixed-zero">—</ix:nonFraction></p>
+<p>Nil: <ix:nonFraction id="nil-amount" name="t:Ratio" contextRef="now-dims" unitRef="pure" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true"></ix:nonFraction></p>
+<p>Empty: <ix:nonNumeric id="empty-note" name="t:Note" contextRef="prior-year"></ix:nonNumeric></p>
+
+<!-- Wider than the decimal column: 30 integer digits. -->
+<p><ix:nonFraction id="huge-integer" name="t:PerShare" contextRef="year" unitRef="pure" decimals="0" format="ixt:num-dot-decimal">123,456,789,012,345,678,901,234,567,890</ix:nonFraction></p>
+<!-- 33 significant digits after the point: Arelle's default context would round this. -->
+<p><ix:nonFraction id="long-fraction" name="t:PerShare" contextRef="year" unitRef="usd" decimals="INF">0.123456789012345678901234567890123</ix:nonFraction></p>
+<!-- 31 significant digits that only appear once scale is applied. -->
+<p><ix:nonFraction id="huge-scaled" name="t:PerShare" contextRef="prior-year" unitRef="usd-per-share" decimals="0" scale="3">1234567890123456789012345678.901</ix:nonFraction></p>
+<!-- The widest value the decimal column holds: 20 integer and 18 fraction digits. -->
+<p><ix:nonFraction id="widest" name="t:Amount" contextRef="now" unitRef="pure" decimals="INF">12345678901234567890.123456789012345678</ix:nonFraction></p>
+
+<!-- The same concept, context and unit as "scaled": both rows must be kept. -->
+<p>Repeated: <ix:nonFraction id="scaled-again" name="t:Amount" contextRef="now" unitRef="usd" decimals="-3" scale="3" format="ixt:num-dot-decimal">1,247</ix:nonFraction></p>
+
+<!-- A text fact holding markup, another fact, an excluded part and a continuation. -->
+<div><ix:nonNumeric id="section" name="t:Section" contextRef="year" continuedAt="section-more">Alpha <b>bold <ix:nonFraction id="nested" name="t:Amount" contextRef="now-dims" unitRef="pure" decimals="0">42</ix:nonFraction> units</b><ix:exclude> PAGE 3 </ix:exclude> omega<!-- not text --> end.</ix:nonNumeric></div>
+<p>between, not part of the fact</p>
+<div><ix:continuation id="section-more"> Continued <i>here</i>.</ix:continuation></div>
+
+<!-- Escaped markup with relative links: the value must not depend on where the file sits. -->
+<div><ix:nonNumeric id="escaped" name="t:Section" contextRef="prior-year" escape="true"><p>See <a href="exhibit.htm">the exhibit</a><img src="logo.png" alt="logo"/></p></ix:nonNumeric></div>
+
+<!-- A SEC transform that arelle-release does not ship. -->
+<p><ix:nonNumeric id="sec-transform" name="t:Note" contextRef="older-year" format="ixt-sec:stateprovnameen">Maryland</ix:nonNumeric></p>
+</body>
+</html>

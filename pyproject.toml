@@ -16,6 +16,9 @@ dependencies = []
 [project.optional-dependencies]
 arelle = ["arelle-release==2.41.4"]
 jsonschema = ["jsonschema>=4"]
+# Only for `export-facts` (with `arelle`). Pinned exactly: the Parquet footer names the writer
+# version, so byte-identical exports need the same pyarrow.
+parquet = ["pyarrow==25.0.1"]
 prod = ["arelle-release==2.41.4", "jsonschema>=4"]
 
 [project.scripts]

@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 
 from .exit_codes import ExitCode
 from .arelle_setup import run_arelle_install_packages
+from .facts_export import run_export_facts
 from .canon_snapshot import run_p008_snapshot_from_canon
 from .fetch import run_fetch
 from .flatten import run_flatten
@@ -508,6 +509,24 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
 
+    export_facts = sub.add_parser(
+        "export-facts",
+        help="Export Arelle-loaded facts as Parquet tables (xew.facts.v1); offline only",
+    )
+    export_facts.add_argument("--primary", required=True, help="Path to the primary inline XBRL document (flat layout)")
+    export_facts.add_argument("--out", required=True, help="New or empty output directory; nothing is overwritten")
+    export_facts.add_argument("--cik", required=True)
+    export_facts.add_argument("--accession", required=True)
+    export_facts.add_argument("--form", required=True)
+    export_facts.add_argument("--filed-date", required=True)
+    export_facts.add_argument("--period-end")
+    export_facts.add_argument("--primary-document-url", required=True)
+    export_facts.add_argument("--amends-accession", help="Accession this filing amends; never inferred")
+    export_facts.add_argument(
+        "--arelle-xdg-config-home",
+        help="Arelle config directory holding the taxonomy packages the filing imports",
+    )
+
     verify = sub.add_parser("verify-pack", help="Verify an Evidence Pack")
     verify.add_argument("--pack", required=True, help="Evidence Pack directory")
     verify.add_argument("--validate-schema", action="store_true", help="Validate xew_findings.json against JSON schema")
@@ -760,6 +779,8 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"Error: {error}", file=sys.stderr)
             return ExitCode.CONFIG_ERROR
         return run_pack(args)
+    if args.cmd == "export-facts":
+        return run_export_facts(args)
     if args.cmd == "verify-pack":
         # Validate verify-pack command arguments
         validation_errors = validate_verify_args(args)

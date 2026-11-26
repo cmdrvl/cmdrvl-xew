@@ -429,6 +429,21 @@ Notes:
 Coverage:
 - A bundle is only as complete as the taxonomy versions you include. A 2020 filing may reference `us-gaap/2020/`, `dei/2020/`, etc. If you run in `offline_only` mode, you must include those versions in your bundle.
 
+### Export Fact Tables (Parquet)
+
+`export-facts` writes the facts Arelle loads from one filing as flat Parquet tables (facts,
+contexts, dimensions, units, filing, documents) plus a manifest, for `lock`, `profile`, `shape`,
+`rvl` and `verify`. It runs offline only and does not touch Evidence Packs.
+
+```bash
+uv sync --extra arelle --extra parquet
+cmdrvl-xew export-facts --primary /tmp/flat/frt-20250930.htm --out /tmp/facts \
+  --cik 0000034903 --accession 0000034903-25-000063 --form 10-Q --filed-date 2025-10-31 \
+  --primary-document-url "https://www.sec.gov/..." --arelle-xdg-config-home <DIR>
+```
+
+Schema, value statuses and limits: `docs/XEW_FACT_TABLES_V1.md`.
+
 ### Verify a Pack
 
 ```bash
