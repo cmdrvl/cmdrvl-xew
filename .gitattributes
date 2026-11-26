@@ -3,3 +3,6 @@
 # concatenates conflicting rewrites and has doubled whole Beads exports in real
 # repos. Default git conflicts are loud and safer until Beads has a semantic
 # merge driver. See cmdrvl-cli br-1zy4 / br-1rs1.
+
+# Vendored upstream files are hash-pinned (see sec_transforms.py): no line-ending conversion.
+src/cmdrvl_xew/xew_edgar_ixt_sec/*.py -text
