@@ -75,7 +75,10 @@ Minimum fields (v1):
 - `config`: key settings that affect reproducibility (e.g., offline/online resolution mode, cache policy)
 
 Recommended fields (when applicable):
-- `arelle_sec_plugin_version`: version string or git SHA
+- `arelle_sec_plugin_version`: written by every `pack` since revision R2, in `toolchain.json` and in
+  the findings `toolchain` object. `Arelle/EDGAR transform <commit> sha256:<digest>` when Arelle read
+  the filing, where the digest is that of `shasum -a 256 __init__.py text2num.py | shasum -a 256`
+  over the vendored files; `not_loaded` when it did not (`--no-arelle`, or Arelle unavailable)
 - `dqcrt_version`: version string or git SHA
 - `taxonomy_inputs`: list of any taxonomy packages/files used to resolve/validate (each with `source_url` or identifier + `sha256`)
 
@@ -269,7 +272,46 @@ including marker M005 on the current filing; and therefore `pack_manifest.json` 
 comparator and history filing, the only differences were `cmdrvl_xew_version` and the hashes that
 follow from it.
 
-This revision does not cover SEC `ixt-sec` transforms, which are still not loaded (bead `bd-tz1`).
+This revision does not cover SEC `ixt-sec` transforms; see R2.
+
+### R2: SEC `ixt-sec` values, and values that cannot be produced (commit `3aa8f12de46c`, bead `bd-tz1`)
+
+**Before:** the SEC inline transforms were not loaded. Every such fact had the same value, the string
+`(ixTransformValueError)`, as did any other fact whose transform failed.
+
+- That string appeared in finding evidence as the fact's value.
+- XEW-P001 missed conflicts between two such facts, and reported a false conflict between such a
+  fact and a readable one that states the same value (`two` and `2`).
+
+**After:**
+
+- The 18 SEC transforms are vendored from Arelle/EDGAR (`src/cmdrvl_xew/xew_edgar_ixt_sec/`) and
+  are always registered. If they cannot be verified and registered, Arelle loading is refused, with
+  or without `--require-arelle`. Plugins already registered in the process, or installed on the
+  machine, take no part.
+- A value Arelle still cannot produce (an unknown transform, or text a transform cannot read) has no
+  `value` in evidence. Its fact reference carries
+  `source: {value_status: "unavailable", source_text, format}`.
+- XEW-P001 never compares such a value. It compares the readable members of the set as before, and
+  lists every set with an unavailable member in `ext.p001_unevaluated_duplicate_sets`:
+  `{total, included, truncated, sets}`, at most 100 sets in instance-id order, each with
+  `instance_id`, `concept`, `context_ref`, `unit_ref` if any, `fact_count`, `unavailable_count` and
+  `facts`. The key is present only when there is such a set. **A set listed there has not been shown
+  to be consistent**, whether or not a conflict was also reported for it.
+- XEW-P008 still reads the displayed text of `ixt-sec` facts, so its titles, exchange keys and
+  registry matching do not change.
+- `toolchain.arelle_sec_plugin_version` is written (section 3). Earlier builds omitted it.
+- `export-facts` shares the loader: see `docs/XEW_FACT_TABLES_V1.md`.
+
+**What differs:** every pack gains `arelle_sec_plugin_version`, so `toolchain.json`,
+`xew_findings.json` and the hashes in `pack_manifest.json` change even for unaffected filings. For
+an affected filing, evidence values, the set of XEW-P001 instances (and what derives from it,
+including marker M005 on the current filing) and `ext` also differ.
+
+**Sample 10-Q** (accession `0000034903-25-000063`; rounded, strict, and with a comparator and
+history filing): the only differences were four evidence values that had been the placeholder (now
+`2`, `2`, `2`, `1`), the new toolchain field, `cmdrvl_xew_version`, and the sizes and hashes that
+follow.
 
 ## P009 Generated Artifact Contract
 

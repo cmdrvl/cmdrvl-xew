@@ -41,8 +41,10 @@ import. For a 2025 filing that includes `srt`, `us-gaap`, `dei`, `country` and `
 | 3 | Refused: the export could be incomplete or wrong. Nothing is written. |
 | 4 | I/O error |
 
-An export is refused when Arelle reports any load error other than `invalidTransformation` (for
-example `IOerror` for a taxonomy file that is not available offline), when a fact has no concept
+Two Arelle load errors are tolerated, and the affected facts are kept and marked:
+`invalidTransformation`, and `transformValueError` when it comes from a SEC `ixt-sec` transform.
+From any other transform, `transformValueError` refuses the export. An export is also refused for
+any other load error (for example `IOerror` for a taxonomy file that is not available offline), when a fact has no concept
 definition, when row and fact counts differ, when a context has non-dimensional segment or scenario
 content, when a continuation chain is broken, or when the taxonomy set uses a local file outside the
 primary document's directory.
@@ -51,8 +53,8 @@ primary document's directory.
 
 `export_manifest.json` records the schema id, facts loaded, facts exported, facts excluded (always
 empty: every exclusion today is a refusal), counts per `value_status`, Arelle load error counts, the
-row count and SHA-256 of each table, and the Arelle, pyarrow and cmdrvl-xew versions. It holds no
-timestamp and no path.
+row count and SHA-256 of each table, and the Arelle, pyarrow and cmdrvl-xew versions and
+`arelle_sec_plugin_version` (the vendored transforms' identity). It holds no timestamp and no path.
 
 Every table is flat: UTF-8 strings, `int64`, `bool` and one `decimal128(38,18)` column. No
 floating-point type is used. Every table carries `accession`. A column that does not apply is NULL.
@@ -105,9 +107,12 @@ One row per loaded fact, in document order.
 CSV-based readers, including `shape` and `rvl`, show NULL and `""` the same way. **Use
 `value_status` to tell them apart.**
 
-SEC's `ixt-sec` transforms are not part of `arelle-release`; they come from Arelle's separate EDGAR
-plugin, which this project does not install. Facts using them are therefore
-`transform_unavailable`. In the sample 10-Q these are 10 of 1,336 facts, 3 of them numeric.
+SEC's `ixt-sec` transforms are not part of `arelle-release`. This project vendors them from
+Arelle/EDGAR (`src/cmdrvl_xew/xew_edgar_ixt_sec/NOTICE.md`), so those facts have values: in the
+sample 10-Q, 10 of 1,336 facts, 3 of them numeric. `export-facts` refuses to run Arelle without
+them. A SEC transform given text it cannot read leaves the row `invalid`. A transform nothing
+provides leaves it `transform_unavailable`. Exports made before commit `3aa8f12de46c` show every
+`ixt-sec` fact as `transform_unavailable`.
 
 ### Other tables
 
