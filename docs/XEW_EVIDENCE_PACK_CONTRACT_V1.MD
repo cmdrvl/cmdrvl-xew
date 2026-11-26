@@ -313,6 +313,62 @@ history filing): the only differences were four evidence values that had been th
 `2`, `2`, `2`, `1`), the new toolchain field, `cmdrvl_xew_version`, and the sizes and hashes that
 follow.
 
+### R3: arelle-release 2.41.4 to 2.47.5, Python 3.11 (commit `b8c0d8f0373d`, bead `bd-d2o`)
+
+A pack or export names its Arelle in `toolchain.arelle_version` (both toolchain objects) and in the
+export manifest's `writers.arelle`. Python 3.10 is no longer supported: Arelle dropped it in 2.47.0.
+Neither earlier revision is undone; the 28-digit context handling (R1) and the vendored SEC
+transforms (R2) are still required with 2.47.5.
+
+**Every pack:** `reproduction_steps.json` now states `python` `>=3.11` (it said `>=3.9`), the `os`
+line says Python 3.11+, and the Arelle dependency is `arelle-release==2.47.5` (it said
+`arelle>=1.2`). Both old statements were already wrong. This changes that file and the hashes that
+cover it.
+
+**Affected inputs.** What follows was observed on synthetic one-fact documents aimed at code that
+changed in Arelle. None of three real filings (a 10-Q, a 10-K and an 8-K) triggered any of A to D:
+their loaded facts were identical, and so were their packs and exports apart from version fields
+(and `bd-8dr`'s clock-time field). How often real filings trigger them has not been measured. The
+list is what was found, not a proof that nothing else differs.
+
+**A. Escaped text blocks (`escape="true"`).** Link attributes keep the filed text. 2.41.4 wrote a
+space in a resolved link attribute as `%20` (relative, absolute and `data:` URIs) and resolved the
+`data` of an `<object>` against its `codebase`.
+
+- Changes: `export-facts` `value_text`, and values in pack evidence.
+- **Possible new XEW-P001 finding:** two blocks that differ only as `my exhibit.htm` against
+  `my%20exhibit.htm` were made identical by 2.41.4. They now differ, so a duplicate set that held no
+  conflict can now be reported as one. Whether the XBRL specifications make this a conflict is open
+  (bead `bd-el6`).
+
+**B. Newly valid values.** `export-facts` now exports a filing it refused for:
+
+- a decimal enumeration written as `1.0` or `2.50` where `1` and `2.5` are enumerated;
+- a value starting with `:` against the pattern `\i\c*`.
+
+**C. Newly invalid values** (`xmlSchema:valueError`). `export-facts` now **refuses** a filing it
+exported for:
+
+- base64 with characters outside the alphabet or without padding;
+- a date with a time zone beyond 14 hours (`+15:00`);
+- the year `0000` in a `gYear`;
+- a date below a `minInclusive` facet, or a `gYear` above a `maxInclusive` facet;
+- an `anyURI` containing `%zz`.
+
+`pack` output did not change for the single-fact B and C cases: `pack` does not read Arelle's load
+errors.
+
+**D. Inline root outside XHTML** raises the new load error `ix11.3.3.1:rootElement`.
+`export-facts` now refuses such a document. `pack` output did not change.
+
+**E. Typed values** of `gYear`, `gMonthDay` and `gYearMonth` keep their time zone inside Arelle. No
+pack or export output changed.
+
+**Online mode only, not exercised:** Arelle now retries downloads that fail with HTTP 408, 429, 500,
+502, 503 or 504, a timeout or a dropped connection, honoring `Retry-After`, with at most 20 seconds
+of waiting per download. This can affect `pack` with `--resolution-mode online_only` or `hybrid`,
+and the online fallback of `offline_preferred`. All verification of R3 ran offline.
+
 ## P009 Generated Artifact Contract
 
 When P009 emits evidence, `generated/instrument_identity_drift.v1.json` is required and must be listed in `pack_manifest.json` with role `generated`.
