@@ -232,6 +232,45 @@ To avoid "it worked on my machine" evidence packs:
 - Do not emit semantic claims that cannot be derived from artifacts (e.g., "semantically unrelated" anchoring).
 - P008 and P009 must not call OpenFIGI, canon, twinning, HTTP, or LLM/model runtimes during detection. Registry evidence must come from a local snapshot copied into the Evidence Pack.
 
+## Output Revisions (v1)
+
+A revision is a change in what the same inputs produce, with no change to the findings schema
+(`schema_version` stays `1.0`) or to the canonical signature format (`v1`). To tell which side of a
+revision a pack is on, read `toolchain.cmdrvl_xew_version`, the git commit the tool ran from, and
+check whether it is the revision's commit or a descendant of it:
+
+```bash
+git merge-base --is-ancestor <revision commit> <cmdrvl_xew_version> && echo "includes the revision"
+```
+
+A build run outside a git checkout records `dev`, which does not identify either side.
+
+### R1: inline numeric values keep every digit (commit `d772dc0473ab`, bead `bd-0ql`)
+
+**Before:** values were loaded, and XEW-P001 rounding intervals computed, in Python's default
+28-digit decimal context.
+
+- A fraction needing more than 28 significant digits after `ix:scale` was rounded. An integer that
+  long failed to load (`xmlSchema:valueError`): its value was the string `(ixTransformValueError)`,
+  the same for every such integer.
+- XEW-P001 could miss a conflict between values that differ beyond the 28th digit, or between values
+  whose `decimals` or `precision` tolerance needs more than 28 digits to compute.
+
+**After:** both steps use a local 10,000-digit context. Strict and rounded conflict rules are
+unchanged.
+
+**What differs for an affected filing:** fact values in finding evidence; the set of XEW-P001
+instances, and so whether the XEW-P001 finding exists; anything derived from those instances,
+including marker M005 on the current filing; and therefore `pack_manifest.json` file hashes and
+`pack_sha256`. Instance ids do not include values, so the id of a given duplicate set is unchanged.
+
+**Not affected:** a filing whose values and comparisons fit in 28 digits. On the sample 10-Q
+(accession `0000034903-25-000063`), packed before and after in rounded mode, strict mode and with a
+comparator and history filing, the only differences were `cmdrvl_xew_version` and the hashes that
+follow from it.
+
+This revision does not cover SEC `ixt-sec` transforms, which are still not loaded (bead `bd-tz1`).
+
 ## P009 Generated Artifact Contract
 
 When P009 emits evidence, `generated/instrument_identity_drift.v1.json` is required and must be listed in `pack_manifest.json` with role `generated`.
