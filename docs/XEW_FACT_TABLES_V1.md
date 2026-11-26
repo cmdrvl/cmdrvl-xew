@@ -126,6 +126,34 @@ files, whatever directory the inputs are in. Row and column order are fixed, eac
 group, compression is Snappy and no timestamp is embedded. The Parquet footer names the writer
 version, so another pyarrow version changes the bytes.
 
+## Using the tables with the spine tools
+
+Checked with the released lock 0.7.1, profile 0.12.1, shape 0.10.1, rvl 0.9.2 and verify 0.7.4
+(vacuum 0.6.1 and hashbytes 0.6.0 build the lock manifest), on exports of the sample 10-Q.
+
+```bash
+shape old/facts.parquet new/facts.parquet --key fact_key
+
+rvl old/facts.parquet new/facts.parquet --profile docs/examples/xew_facts_v1.rvl-profile.yaml
+
+profile stats facts/facts.parquet
+profile suggest-key facts/facts.parquet
+
+verify run rules.verify.json --bind facts=facts/facts.parquet
+
+vacuum facts | hashbytes | lock --dataset-id my-filing --out facts.lock.json
+lock verify facts.lock.json --root facts
+```
+
+`rvl` needs the column profile. Without it, it refuses `facts.parquet` with `E_MIXED_TYPES`,
+because `value_text` holds both numbers and words. With the profile it compares `value_decimal`
+only. A change to a text fact, to nil, or to a value too wide for `value_decimal` is not reported by
+that comparison. In `verify`, an empty string counts as missing for `not_null`; nil facts have an
+empty `source_text`.
+
+`--key fact_key` matches facts by their aspects, so two filings with different periods share few
+keys. For a changed filing with added or removed facts, see `rvl --key-mode overlap`.
+
 ## Limits
 
 - Footnotes and fact-to-footnote relationships are not exported.

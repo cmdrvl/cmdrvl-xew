@@ -1,0 +1,6 @@
+# rvl column scope for facts.parquet (xew.facts.v1).
+# facts.parquet holds text columns (value_text among them) that mix numbers and words, which rvl
+# refuses (E_MIXED_TYPES). This compares only the typed numeric value, aligned by fact_key.
+# Facts whose value_decimal is NULL (text, nil, no value, out of range) are not compared by it.
+include_columns: [fact_key, value_decimal]
+key: [fact_key]
