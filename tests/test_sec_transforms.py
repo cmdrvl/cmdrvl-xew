@@ -202,6 +202,41 @@ class TestPackWithSecTransforms(unittest.TestCase):
         self.assertEqual(read_json(out / "toolchain" / "toolchain.json")["arelle_sec_plugin_version"], "not_loaded")
         self.assertEqual(read_json(out / "xew_findings.json")["toolchain"]["arelle_sec_plugin_version"], "not_loaded")
 
+    def test_ext_listing_is_capped_at_100_sets_and_says_so(self):
+        source = self.work / "many-source"
+        source.mkdir()
+        shutil.copyfile(FIXTURES / "sec.xsd", source / "sec.xsd")
+        template = (FIXTURES / "dups.htm").read_text(encoding="utf-8")
+        head = template[: template.index('<xbrli:context id="now">')]
+        contexts, facts = [], []
+        for number in range(101):  # 101 sets of two unreadable facts, one context each
+            contexts.append(
+                f'<xbrli:context id="c{number}"><xbrli:entity><xbrli:identifier scheme="http://example.com/id">'
+                f"E{number}</xbrli:identifier></xbrli:entity><xbrli:period>"
+                "<xbrli:instant>2025-09-30</xbrli:instant></xbrli:period></xbrli:context>"
+            )
+            facts += [
+                f'<p><ix:nonFraction id="f{number}-{copy}" name="s:Ratio" contextRef="c{number}" unitRef="pure" '
+                'decimals="INF" format="zz:mystery">?</ix:nonFraction></p>'
+                for copy in (1, 2)
+            ]
+        unit = '<xbrli:unit id="pure"><xbrli:measure>xbrli:pure</xbrli:measure></xbrli:unit>'
+        (source / "many.htm").write_text(
+            head + "".join(contexts) + unit + "</ix:resources></ix:header></div>" + "".join(facts) + "</body></html>",
+            encoding="utf-8",
+        )
+        out = self.work / "many"
+        result = run_pack(source / "many.htm", out, "--require-arelle")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        listing = read_json(out / "xew_findings.json")["ext"]["p001_unevaluated_duplicate_sets"]
+        self.assertEqual(
+            (listing["total"], listing["included"], listing["truncated"], len(listing["sets"])),
+            (101, 100, True, 100),
+        )
+        ids = [s["instance_id"] for s in listing["sets"]]
+        self.assertEqual(ids, sorted(ids))
+        self.assertEqual(instances(read_json(out / "xew_findings.json"), "XEW-P001"), [])
+
     def test_ext_listing_is_absent_when_every_set_was_evaluated(self):
         out = self.work / "wide"
         result = run_pack(REPO / "tests" / "fixtures" / "pack_precision" / "wide.htm", out, "--require-arelle")
