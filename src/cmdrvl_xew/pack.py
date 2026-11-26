@@ -20,7 +20,7 @@ from .artifacts import (
     compute_pack_layout,
     extract_schema_refs,
 )
-from . import __version__
+from . import ARELLE_REQUIREMENT, REQUIRES_PYTHON, __version__
 from . import sec_transforms
 from .comparator import comparator_policy, ComparatorPolicy
 from .comparator_selection import select_comparator_and_history
@@ -135,11 +135,11 @@ def _generate_repro_steps(pack_id: str, cik: str, accession: str, form: str,
         "verification": {
             "description": "Steps to verify this Evidence Pack and reproduce findings",
             "requirements": {
-                "os": "Linux, macOS, or Windows with Python 3.9+",
-                "python": ">=3.9",
+                "os": f"Linux, macOS, or Windows with Python {REQUIRES_PYTHON.removeprefix('>=')}+",
+                "python": REQUIRES_PYTHON,
                 "dependencies": [
                     f"cmdrvl-xew=={cmdrvl_version}",
-                    "arelle>=1.2"
+                    ARELLE_REQUIREMENT
                 ]
             },
             "steps": [

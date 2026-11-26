@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Escaped text blocks (contract R3, change A). Synthetic. -->
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:ix="http://www.xbrl.org/2013/inlineXBRL"
+      xmlns:xbrli="http://www.xbrl.org/2003/instance"
+      xmlns:link="http://www.xbrl.org/2003/linkbase"
+      xmlns:xlink="http://www.w3.org/1999/xlink"
+      xmlns:a="http://example.com/arelle"
+      xml:lang="en-US">
+<head><title>blocks</title></head>
+<body>
+<div style="display:none">
+<ix:header>
+<ix:references><link:schemaRef xlink:type="simple" xlink:href="types.xsd"/></ix:references>
+<ix:resources>
+<xbrli:context id="y2025">
+<xbrli:entity><xbrli:identifier scheme="http://example.com/id">E1</xbrli:identifier></xbrli:entity>
+<xbrli:period><xbrli:startDate>2025-01-01</xbrli:startDate><xbrli:endDate>2025-12-31</xbrli:endDate></xbrli:period>
+</xbrli:context>
+<xbrli:context id="y2024">
+<xbrli:entity><xbrli:identifier scheme="http://example.com/id">E1</xbrli:identifier></xbrli:entity>
+<xbrli:period><xbrli:startDate>2024-01-01</xbrli:startDate><xbrli:endDate>2024-12-31</xbrli:endDate></xbrli:period>
+</xbrli:context>
+<xbrli:context id="y2023">
+<xbrli:entity><xbrli:identifier scheme="http://example.com/id">E1</xbrli:identifier></xbrli:entity>
+<xbrli:period><xbrli:startDate>2023-01-01</xbrli:startDate><xbrli:endDate>2023-12-31</xbrli:endDate></xbrli:period>
+</xbrli:context>
+</ix:resources>
+</ix:header>
+</div>
+
+<!-- The link attributes as filed: a space in href and in a data: URI, and an object with a codebase.
+     The value must keep each attribute's text. -->
+<div><ix:nonNumeric id="links" name="a:Block" contextRef="y2023" escape="true"><a href="my exhibit.htm">e</a><img src="data:image/png;base64,iVBO Rw0K" alt="l"/><object codebase="base/" data="movie.bin">o</object></ix:nonNumeric></div>
+
+<!-- Two blocks that differ only in how the link writes a space: one XEW-P001 conflict. -->
+<div><ix:nonNumeric id="space" name="a:Block" contextRef="y2025" escape="true"><a href="my exhibit.htm">e</a></ix:nonNumeric></div>
+<div><ix:nonNumeric id="percent" name="a:Block" contextRef="y2025" escape="true"><a href="my%20exhibit.htm">e</a></ix:nonNumeric></div>
+
+<!-- Two identical blocks: a duplicate with no conflict. -->
+<div><ix:nonNumeric id="same1" name="a:Block" contextRef="y2024" escape="true"><a href="my exhibit.htm">e</a></ix:nonNumeric></div>
+<div><ix:nonNumeric id="same2" name="a:Block" contextRef="y2024" escape="true"><a href="my exhibit.htm">e</a></ix:nonNumeric></div>
+</body>
+</html>

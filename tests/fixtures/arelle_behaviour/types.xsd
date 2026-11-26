@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic taxonomy for tests/test_arelle_behaviour.py. -->
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            xmlns:xbrli="http://www.xbrl.org/2003/instance"
+            xmlns:a="http://example.com/arelle"
+            targetNamespace="http://example.com/arelle"
+            elementFormDefault="qualified">
+  <xsd:import namespace="http://www.xbrl.org/2003/instance" schemaLocation="http://www.xbrl.org/2003/xbrl-instance-2003-12-31.xsd"/>
+
+  <xsd:element name="Block" id="a_Block" type="xbrli:stringItemType" substitutionGroup="xbrli:item" xbrli:periodType="duration"/>
+  <xsd:element name="Bytes" id="a_Bytes" type="xbrli:base64BinaryItemType" substitutionGroup="xbrli:item" xbrli:periodType="duration"/>
+  <xsd:element name="Day" id="a_Day" type="xbrli:dateItemType" substitutionGroup="xbrli:item" xbrli:periodType="duration"/>
+
+  <xsd:complexType name="ChoiceType">
+    <xsd:simpleContent>
+      <xsd:restriction base="xbrli:decimalItemType">
+        <xsd:enumeration value="1"/>
+        <xsd:enumeration value="2.5"/>
+      </xsd:restriction>
+    </xsd:simpleContent>
+  </xsd:complexType>
+  <xsd:element name="Choice" id="a_Choice" type="a:ChoiceType" substitutionGroup="xbrli:item" xbrli:periodType="duration"/>
+
+  <xsd:complexType name="NameType">
+    <xsd:simpleContent>
+      <xsd:restriction base="xbrli:stringItemType">
+        <xsd:pattern value="\i\c*"/>
+      </xsd:restriction>
+    </xsd:simpleContent>
+  </xsd:complexType>
+  <xsd:element name="Name" id="a_Name" type="a:NameType" substitutionGroup="xbrli:item" xbrli:periodType="duration"/>
+
+  <xsd:complexType name="SinceType">
+    <xsd:simpleContent>
+      <xsd:restriction base="xbrli:dateItemType">
+        <xsd:minInclusive value="2025-01-01"/>
+      </xsd:restriction>
+    </xsd:simpleContent>
+  </xsd:complexType>
+  <xsd:element name="Since" id="a_Since" type="a:SinceType" substitutionGroup="xbrli:item" xbrli:periodType="duration"/>
+</xsd:schema>

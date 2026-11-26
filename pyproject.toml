@@ -7,19 +7,19 @@ name = "cmdrvl-xew"
 version = "0.1.0"
 description = "CMD+RVL XBRL Early Warning (XEW) Evidence Pack generator"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [{name = "cmdrvl"}]
 
 dependencies = []
 
 [project.optional-dependencies]
-arelle = ["arelle-release==2.41.4"]
+arelle = ["arelle-release==2.47.5"]
 jsonschema = ["jsonschema>=4"]
 # Only for `export-facts` (with `arelle`). Pinned exactly: the Parquet footer names the writer
 # version, so byte-identical exports need the same pyarrow.
 parquet = ["pyarrow==25.0.1"]
-prod = ["arelle-release==2.41.4", "jsonschema>=4"]
+prod = ["arelle-release==2.47.5", "jsonschema>=4"]
 
 [project.scripts]
 cmdrvl-xew = "cmdrvl_xew.cli:main"

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Values newly accepted (contract R3, change B). Synthetic. choice-1 and choice-2 equal the
+     enumerated 1 and 2.5 as decimals; name matches \i\c* because \i includes ":". -->
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:ix="http://www.xbrl.org/2013/inlineXBRL"
+      xmlns:xbrli="http://www.xbrl.org/2003/instance"
+      xmlns:link="http://www.xbrl.org/2003/linkbase"
+      xmlns:xlink="http://www.w3.org/1999/xlink"
+      xmlns:a="http://example.com/arelle"
+      xml:lang="en-US">
+<head><title>widened</title></head>
+<body>
+<div style="display:none">
+<ix:header>
+<ix:references><link:schemaRef xlink:type="simple" xlink:href="types.xsd"/></ix:references>
+<ix:resources>
+<xbrli:context id="y2025">
+<xbrli:entity><xbrli:identifier scheme="http://example.com/id">E1</xbrli:identifier></xbrli:entity>
+<xbrli:period><xbrli:startDate>2025-01-01</xbrli:startDate><xbrli:endDate>2025-12-31</xbrli:endDate></xbrli:period>
+</xbrli:context>
+<xbrli:context id="y2024">
+<xbrli:entity><xbrli:identifier scheme="http://example.com/id">E1</xbrli:identifier></xbrli:entity>
+<xbrli:period><xbrli:startDate>2024-01-01</xbrli:startDate><xbrli:endDate>2024-12-31</xbrli:endDate></xbrli:period>
+</xbrli:context>
+<xbrli:unit id="pure"><xbrli:measure>xbrli:pure</xbrli:measure></xbrli:unit>
+</ix:resources>
+</ix:header>
+</div>
+<p><ix:nonFraction id="choice-1" name="a:Choice" contextRef="y2025" unitRef="pure" decimals="INF">1.0</ix:nonFraction></p>
+<p><ix:nonFraction id="choice-2" name="a:Choice" contextRef="y2024" unitRef="pure" decimals="INF">2.50</ix:nonFraction></p>
+<p><ix:nonNumeric id="name" name="a:Name" contextRef="y2025">:a</ix:nonNumeric></p>
+</body>
+</html>

@@ -66,6 +66,8 @@ Supported EDGAR form directories for `flatten` include 10-Q, 10-K, 8-K, 20-F, 6-
 
 ### Install (dev)
 
+Requires Python 3.11 or later. The `arelle` and `prod` extras pin `arelle-release==2.47.5`.
+
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate

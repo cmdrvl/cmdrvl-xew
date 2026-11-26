@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Controls for contract R3, changes C and D. Synthetic. Every value here is valid and exports
+     with both Arelle 2.41.4 and 2.47.5; tests/test_arelle_behaviour.py makes one value (or the root
+     element) invalid at a time. Each value is the nearest valid one to its invalid variant. -->
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:ix="http://www.xbrl.org/2013/inlineXBRL"
+      xmlns:xbrli="http://www.xbrl.org/2003/instance"
+      xmlns:link="http://www.xbrl.org/2003/linkbase"
+      xmlns:xlink="http://www.w3.org/1999/xlink"
+      xmlns:a="http://example.com/arelle"
+      xml:lang="en-US">
+<head><title>values</title></head>
+<body>
+<div style="display:none">
+<ix:header>
+<ix:references><link:schemaRef xlink:type="simple" xlink:href="types.xsd"/></ix:references>
+<ix:resources>
+<xbrli:context id="y2025">
+<xbrli:entity><xbrli:identifier scheme="http://example.com/id">E1</xbrli:identifier></xbrli:entity>
+<xbrli:period><xbrli:startDate>2025-01-01</xbrli:startDate><xbrli:endDate>2025-12-31</xbrli:endDate></xbrli:period>
+</xbrli:context>
+</ix:resources>
+</ix:header>
+</div>
+<p><ix:nonNumeric id="bytes" name="a:Bytes" contextRef="y2025">aGVsbG8=</ix:nonNumeric></p>
+<p><ix:nonNumeric id="day" name="a:Day" contextRef="y2025">2025-01-31+14:00</ix:nonNumeric></p>
+<p><ix:nonNumeric id="since" name="a:Since" contextRef="y2025">2025-01-01</ix:nonNumeric></p>
+</body>
+</html>
